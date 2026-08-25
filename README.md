@@ -17,14 +17,14 @@ Training through the Cortex Training SNOWAPI.
 Requires Python 3.8 or later.
 
 ```bash
-pip install "cortex-training @ git+https://github.com/Snowflake-AI-Research/Arctic-Platform.git#subdirectory=cortex_training"
+pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
 ```
 
 For local development:
 
 ```bash
-git clone https://github.com/Snowflake-AI-Research/Arctic-Platform.git
-cd Arctic-Platform/cortex_training
+git clone https://github.com/Snowflake-AI-Research/cortex-training.git
+cd cortex-training
 pip install -e .
 ```
 
