@@ -32,7 +32,13 @@ dev = [
     "mypy>=0.990",
 ]
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["cortex_training*"]
 exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

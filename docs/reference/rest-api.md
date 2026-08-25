@@ -10,11 +10,11 @@
 > generation, operations, and logs.
 >
 > **Sources used for this snapshot.** The client and wire implementation in
-> `cortex_training/client.py` and `cortex_training/wire.py`, the command-line
-> interface in `cortex_training._cli.py`, their unit tests, and the adjacent Cortex Training
-> control-plane protocol/server are the local evidence for this document. The
-> SNOWAPI OpenAPI specification remains the source of truth when it is
-> available.
+> `src/cortex_training/client.py` and `src/cortex_training/wire.py`, the
+> command-line interface in `src/cortex_training/_cli.py`, their unit tests,
+> and the adjacent Cortex Training control-plane protocol/server are the local
+> evidence for this document. The SNOWAPI OpenAPI specification remains the
+> source of truth when it is available.
 >
 > **Important distinction.** `CortexTrainingClient` is a low-level transport client.
 > ArcticTraining may put additional keys such as `context` and `processing`

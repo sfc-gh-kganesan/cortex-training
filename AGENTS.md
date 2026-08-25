@@ -1,6 +1,6 @@
 # Agent Instructions for `cortex-training`
 
-Always run the tests before and after changing any code in `cortex_training/`:
+Always run the tests before and after changing any code in `src/cortex_training/`:
 
 ```bash
 cd /home/repo/Arctic-Platform/cortex_training
@@ -11,7 +11,7 @@ All tests must pass.
 
 ## Context
 
-`cortex_training/client.py` calls into the **Cortex Training SNOWAPI** exposed by
+`src/cortex_training/client.py` calls into the **Cortex Training SNOWAPI** exposed by
 Global Services. When changing the wire format, cross-check these:
 
 - SNOWAPI spec (source of truth for the REST schema):

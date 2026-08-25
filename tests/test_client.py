@@ -38,11 +38,16 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-# Import the module directly so we don't pull cortex_training/__init__.py (which
-# imports torch via engine.py).
+# Import the module directly so we don't pull src/cortex_training/__init__.py
+# (which imports torch via engine.py).
 spec = importlib.util.spec_from_file_location(
     "cortex_training_client_under_test",
-    str(__import__("pathlib").Path(__file__).resolve().parent.parent / "cortex_training" / "client.py"),
+    str(
+        __import__("pathlib").Path(__file__).resolve().parent.parent
+        / "src"
+        / "cortex_training"
+        / "client.py"
+    ),
 )
 nc = importlib.util.module_from_spec(spec)
 sys.modules["cortex_training_client_under_test"] = nc

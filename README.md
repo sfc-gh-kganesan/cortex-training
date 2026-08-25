@@ -68,7 +68,7 @@ See the [CLI reference](docs/reference/cli.md) for commands and configuration.
 | `recipes/` | End-to-end training, sampling, and evaluation workflows |
 | `examples/api/` | Small JSON examples for individual API operations |
 | `examples/config/` | Connection configuration templates |
-| `cortex_training/` | Installable Python client |
+| `src/cortex_training/` | Installable Python client |
 | `tests/` | Client and CLI tests |
 
 The current onboarding work is tracked in

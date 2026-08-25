@@ -11,5 +11,5 @@ classes and `name=value` command-line overrides. Important groups include:
 - Checkpoint, evaluation, logging, and W&B settings
 
 A shared typed YAML/Python configuration layer is planned under
-`cortex_training/config/`. Until it exists, the recipe `Config` classes and the
+`src/cortex_training/config/`. Until it exists, the recipe `Config` classes and the
 [REST API schema](../rest-api.md#8-create-job-schemas) are authoritative.

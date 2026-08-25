@@ -8,6 +8,6 @@ For complete method behavior and examples, use:
 
 - [CLI and client reference](cli.md)
 - [REST API reference](rest-api.md)
-- `cortex_training/client.py`
+- `src/cortex_training/client.py`
 
 Generated API documentation from type hints and docstrings is planned.

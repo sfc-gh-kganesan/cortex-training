@@ -1,1 +1,8 @@
 *.json
+*.egg-info/
+*.py[cod]
+.pytest_cache/
+.venv/
+__pycache__/
+build/
+dist/
