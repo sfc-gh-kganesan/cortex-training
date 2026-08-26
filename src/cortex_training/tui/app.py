@@ -83,6 +83,8 @@ class JobListScreen(Screen):
         self._status_by_item: dict[str, str] = {}
         self._all_jobs: list = []
         self._filter = ""
+        self._last_refreshed = None
+        self._refreshing = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -91,19 +93,40 @@ class JobListScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.app.sub_title = "select a job (↑/↓, Enter · / filter · r refresh)"
-        self._load_jobs()
+        self._refresh_jobs()
         # Gentle auto-refresh so status changes appear without pressing r.
         self.set_interval(self._REFRESH_SECONDS, self._auto_refresh)
+
+    def on_screen_resume(self) -> None:
+        # LogScreen owns the same app-level subtitle while it is active. Restore
+        # the picker status when the user returns from a job.
+        self._update_subtitle()
+
+    def _update_subtitle(self) -> None:
+        if self._refreshing:
+            refresh_status = "refreshing…"
+            if self._last_refreshed:
+                refresh_status += f" (last refreshed {self._last_refreshed})"
+        else:
+            refresh_status = f"last refreshed {self._last_refreshed or '—'}"
+        self.app.sub_title = (
+            "select a job (↑/↓, Enter · / filter · r refresh)"
+            f"  ·  {refresh_status}"
+        )
+
+    def _refresh_jobs(self) -> None:
+        self._refreshing = True
+        self._update_subtitle()
+        self._load_jobs()
 
     def _auto_refresh(self) -> None:
         # Only refetch while the picker is the active screen — don't poll GS in
         # the background while the user is down in the log view.
         if self.app.screen is self:
-            self._load_jobs()
+            self._refresh_jobs()
 
     def action_refresh(self) -> None:
-        self._load_jobs()
+        self._refresh_jobs()
 
     def action_filter(self) -> None:
         self.set_focus(self.query_one("#jobfilter", Input))
@@ -136,7 +159,9 @@ class JobListScreen(Screen):
         self.app.call_from_thread(self._on_jobs, jobs, None)
 
     async def _on_jobs(self, jobs, error) -> None:
+        self._refreshing = False
         if error:
+            self._update_subtitle()
             lv = self.query_one("#jobs", ListView)
             await lv.clear()
             self._all_jobs = []
@@ -145,6 +170,8 @@ class JobListScreen(Screen):
             lv.append(ListItem(Label(f"[error] {error}")))
             return
         self._all_jobs = sort_jobs(jobs)
+        self._last_refreshed = time.strftime("%H:%M:%S")
+        self._update_subtitle()
         await self._render_jobs()
 
     async def _render_jobs(self) -> None:

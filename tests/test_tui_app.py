@@ -19,6 +19,8 @@ the optional ``textual`` extra is installed (``pip install 'cortex-training[tui]
 import asyncio
 import glob
 import os
+import re
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -97,6 +99,7 @@ async def _run_with_picker():
         # active job (RUNNING) sorted first
         assert screen._job_by_item["job-0"] == "7"
         assert screen._job_by_item["job-1"] == "old"
+        assert re.search(r"last refreshed \d{2}:\d{2}:\d{2}", app.sub_title or "")
         await _settle(app, pilot)
 
 
@@ -109,18 +112,50 @@ def test_app_without_job_id_shows_job_picker():
 
 
 async def _run_refresh_picker():
-    app = CortexTrainingLogTUI(_client(), poll_interval=0.01)
-    async with app.run_test() as pilot:
-        ok = await _wait(
-            pilot, app, lambda: isinstance(app.screen, JobListScreen) and len(app.screen.query("#jobs ListItem")) == 2
-        )
-        assert ok, "initial jobs did not load"
-        # Refresh re-populates with the same item IDs (job-0, job-1). Must not
-        # raise DuplicateIds nor accumulate duplicates (clear() is awaited).
-        app.screen.action_refresh()
-        ok = await _wait(pilot, app, lambda: len(app.screen.query("#jobs ListItem")) == 2)
-        assert ok, "refresh changed item count (DuplicateIds regression)"
-        await _settle(app, pilot)
+    c = _client()
+    jobs = c.list_jobs.return_value
+    refresh_started = threading.Event()
+    finish_refresh = threading.Event()
+    calls = 0
+
+    def list_jobs():
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            refresh_started.set()
+            finish_refresh.wait(timeout=5)
+        return jobs
+
+    c.list_jobs.side_effect = list_jobs
+    app = CortexTrainingLogTUI(c, poll_interval=0.01)
+    try:
+        async with app.run_test() as pilot:
+            ok = await _wait(
+                pilot,
+                app,
+                lambda: isinstance(app.screen, JobListScreen)
+                and len(app.screen.query("#jobs ListItem")) == 2,
+            )
+            assert ok, "initial jobs did not load"
+            previous_refresh = app.screen._last_refreshed
+            # Refresh re-populates with the same item IDs (job-0, job-1). Must
+            # show that work is underway without discarding the last success.
+            app.screen.action_refresh()
+            ok = await _wait(pilot, app, refresh_started.is_set)
+            assert ok, "refresh did not start"
+            assert "refreshing…" in (app.sub_title or "")
+            assert f"last refreshed {previous_refresh}" in (app.sub_title or "")
+            finish_refresh.set()
+            ok = await _wait(
+                pilot,
+                app,
+                lambda: "refreshing…" not in (app.sub_title or "")
+                and len(app.screen.query("#jobs ListItem")) == 2,
+            )
+            assert ok, "refresh did not finish cleanly"
+            await _settle(app, pilot)
+    finally:
+        finish_refresh.set()
 
 
 async def _run_refresh_sources():
