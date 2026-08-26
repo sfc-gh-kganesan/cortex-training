@@ -14,13 +14,13 @@ This project uses [uv](https://docs.astral.sh/uv/); `pip` works in place of
 Install straight from the repository:
 
 ```bash
-uv pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
+uv pip install git+https://github.com/snowflakedb/cortex-training.git
 ```
 
 Or from a local checkout:
 
 ```bash
-git clone https://github.com/Snowflake-AI-Research/cortex-training.git
+git clone https://github.com/snowflakedb/cortex-training.git
 cd cortex-training
 uv pip install .            # add -e for an editable/dev install
 ```

@@ -26,13 +26,13 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 Then:
 
 ```bash
-uv pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
+uv pip install git+https://github.com/snowflakedb/cortex-training.git
 ```
 
 For local development:
 
 ```bash
-git clone https://github.com/Snowflake-AI-Research/cortex-training.git
+git clone https://github.com/snowflakedb/cortex-training.git
 cd cortex-training
 uv pip install -e .
 ```

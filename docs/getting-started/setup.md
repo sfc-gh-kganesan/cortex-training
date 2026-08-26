@@ -3,7 +3,7 @@
 Install the client:
 
 ```bash
-uv pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
+uv pip install git+https://github.com/snowflakedb/cortex-training.git
 ```
 
 If you cloned the repository (needed to run the recipes, which are not part of
