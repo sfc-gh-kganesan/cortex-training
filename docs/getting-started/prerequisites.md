@@ -2,7 +2,8 @@
 
 Before running a training recipe, you need:
 
-- Python 3.8 or later
+- Python 3.10 or later
+- [uv](https://docs.astral.sh/uv/) (or `pip`) to install the client
 - Access to a Snowflake account with the Cortex Training endpoint enabled
 - A programmatic access token
 - A database and schema containing the endpoint

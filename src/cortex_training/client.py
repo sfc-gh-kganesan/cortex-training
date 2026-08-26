@@ -13,23 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""HTTP client for the Cortex Training GS API.
+"""HTTP client for the Cortex Training REST API.
 
 Single-purpose, production-shaped client:
 
 - One auth path: Programmatic Access Token (PAT) — see ``CortexTrainingClient.from_pat``.
 - One CreateJob shape: a list of typed :class:`SubJobConfig` (each carries either
-  a :class:`TrainingConfig` or an :class:`InferenceConfig`). Validation mirrors
-  the Control Plane validators in
-  ``cortex/neutrino/pkg/controlplane/server.go`` (``protoToSubJobConfig`` /
-  ``trainingConfig.validate`` / ``inferenceConfig.validate``).
-- One wire format: the GS REST shape from
-  ``GlobalServices/.../neutrino.yaml``: ``{job_id?, sub_jobs:[SubJobConfig]}``
-  with per-sub-job ``training`` / ``sampling`` blocks.
+  a :class:`TrainingConfig` or an :class:`InferenceConfig`). The client-side
+  validators mirror the server's own required-field checks so an invalid job
+  fails locally instead of after a round trip.
+- One wire format: ``{job_id?, sub_job_configs:[SubJobConfig]}`` with per-sub-job
+  ``training_config`` / ``inference_config`` blocks. See
+  ``docs/reference/rest-api.md`` for the full schema.
 
-The Control Plane proto (``cortex/neutrino/protos/control_plane.proto``) and the
-GS yaml keep ``additionalProperties: true`` on the config blocks so new fields
-land in the Control Plane only. The strict shape lives here in the client.
+The server keeps the config blocks open (``additionalProperties``), so unknown
+keys pass through unchanged. The strict, typed shape lives here in the client;
+use the ``extra`` fields for anything the typed layer does not model yet.
 """
 
 from __future__ import annotations
@@ -58,11 +57,10 @@ from cortex_training import wire
 
 logger = logging.getLogger(__name__)
 
-# Env var that unlocks create-job debug options. Debug options (e.g. the
-# image_tag override that selects an arbitrary Cortex Training backend build for a job's
-# zone) are an internal-only capability: the client refuses to forward a
-# create-job request carrying a `debug` block unless this is set to a truthy
-# value, keeping the feature hidden from normal external use.
+# Env var that unlocks create-job debug options. These are an internal-only
+# capability and are deliberately not documented for external use: the client
+# refuses to forward a create-job request carrying a `debug` block unless this
+# is set to a truthy value. The server gates them independently.
 DEBUG_OPTIONS_ENV = "CORTEX_TRAINING_ENABLE_DEBUG_OPTIONS"
 
 
@@ -77,14 +75,18 @@ def _debug_options_enabled() -> bool:
 
 
 # HTTP statuses worth retrying: the request was well-formed, so the same call
-# may succeed once transient load/infra conditions clear. 4xx (except 429) are
-# excluded because they signal a client/config error that won't fix itself.
-#   429 Too Many Requests  - rate limited; back off and retry
+# may succeed once transient load/infra conditions clear.
+#   429 Too Many Requests   - rate limited; back off and retry
 #   500 Internal Server Err - transient server-side failure
-#   502 Bad Gateway         - upstream/proxy hiccup between GS and the backend
+#   502 Bad Gateway         - upstream/proxy hiccup in front of the backend
 #   503 Service Unavailable - server temporarily overloaded or restarting
-#   504 Gateway Timeout      - upstream didn't respond in time
-#   409                      - ZMD restarting
+#   504 Gateway Timeout     - upstream didn't respond in time
+#   409 Conflict            - the target zone is restarting
+#   404 Not Found           - a just-created job may not be visible yet, so a
+#                             valid id can 404 briefly and succeed on retry.
+# Note the trade-off on 404: a *mistyped* job id is also retried (up to
+# `max_retries`, with backoff) before the error surfaces. Every other 4xx is
+# excluded because it signals a client/config error that won't fix itself.
 _TRANSIENT_STATUSES = {429, 500, 502, 503, 504, 404, 409}
 _CHUNK_GROUP_RESTART_REQUIRED = "chunk_group_restart_required"
 _CHUNK_GROUP_ERROR_CODES = {
@@ -124,7 +126,7 @@ def _is_transient(exc: BaseException) -> bool:
 
 
 def _iter_error_dicts(value: Any, *, depth: int = 0) -> Iterator[dict]:
-    """Yield dictionaries from direct or GS-wrapped JSON error bodies."""
+    """Yield dictionaries from direct or service-wrapped JSON error bodies."""
     if depth > 8:
         return
     if isinstance(value, dict):
@@ -191,10 +193,10 @@ def _is_connect_error(exc: BaseException) -> bool:
 
 
 class JobType(str, Enum):
-    """Sub-job types supported by the Cortex Training platform.
+    """Sub-job types supported by Cortex Training.
 
-    Mirrors ``subjob.Type`` in ``cortex/neutrino/pkg/subjob/types.go`` and the
-    ``job_type`` enum in the GS REST yaml.
+    Matches the ``job_type`` enum in the REST schema; see
+    ``docs/reference/rest-api.md`` section 8.1.
     """
 
     TRAINING = "training"
@@ -232,13 +234,12 @@ def _validate_primerl_lm_head_config(extra: dict, *, location: str) -> None:
 class TrainingConfig:
     """Training hyperparameters for a training sub-job.
 
-    Required fields mirror the Control Plane validator in
-    ``cortex/neutrino/pkg/controlplane/server.go`` (``trainingConfig``):
-    ``max_seq_len > 0`` and ``train_batch_size > 0``.
+    Required fields mirror the server-side validator: ``max_seq_len > 0``,
+    ``train_batch_size > 0``, ``n_gpus > 0``, and a non-empty ``optimizer``.
 
-    ``extra`` carries any additional fields the Cortex Training platform training worker
-    consumes. The proto Struct is intentionally open (additionalProperties),
-    so unknown keys flow through unchanged.
+    ``extra`` carries any additional fields the training worker consumes. The
+    server keeps this block open (additionalProperties), so unknown keys flow
+    through unchanged. See ``docs/reference/rest-api.md`` section 8.2.
     """
 
     optimizer: dict
@@ -289,9 +290,9 @@ class TrainingConfig:
 class InferenceConfig:
     """Sampling/log-probability config for an inference sub-job.
 
-    Required fields mirror the Control Plane validator
-    (``inferenceConfig`` in ``controlplane/server.go``): ``max_seq_len > 0``.
-    ``extra`` carries vLLM-style passthrough keys (e.g. gpu_memory_utilization).
+    Required fields mirror the server-side validator: ``max_seq_len > 0`` and
+    ``n_gpus > 0``. ``extra`` carries vLLM-style passthrough keys (e.g.
+    ``gpu_memory_utilization``). See ``docs/reference/rest-api.md`` section 8.3.
     """
 
     max_seq_len: int
@@ -318,8 +319,8 @@ class InferenceConfig:
 class SubJobConfig:
     """One sub-job within a CreateJob request.
 
-    Mirrors ``subjob.Config`` in ``cortex/neutrino/pkg/subjob/types.go`` and the
-    ``SubJobConfig`` schema in the GS yaml.
+    Matches the ``SubJobConfig`` schema in ``docs/reference/rest-api.md``
+    section 8.1.
 
     Exactly one of ``training`` or ``sampling`` must be set, matching the
     sub-job's ``job_type`` (see :meth:`validate`).
@@ -433,7 +434,7 @@ class SubJobConfig:
         )
 
     def validate(self) -> None:
-        # Mirrors protoToSubJobConfig in controlplane/server.go (lines 772-823).
+        # Mirrors the server-side CreateJob validation.
         if not self.model_name:
             raise ValueError("sub_job.model_name is required")
         if self.training is not None and self.sampling is not None:
@@ -813,33 +814,34 @@ def _parse_s3_stage_credentials(raw_value: Any) -> dict[str, str]:
 
 
 class CortexTrainingClient:
-    """HTTP client for the Cortex Training GS API (``cortex-training``).
+    """HTTP client for the Cortex Training REST API (``cortex-training``).
 
-    Construct with :meth:`from_pat`:
+    Construct with :meth:`from_pat`::
 
         client = CortexTrainingClient.from_pat(
-            host="dsa_test.qa6.us-west-2.aws.snowflakecomputing.com",
+            host="ACCOUNT.snowflakecomputing.com",
             pat="...",
-            database="DSA_TEST_DB",
+            database="CORTEX_TRAINING_DB",
             schema="PUBLIC",
         )
 
-    For local development, point ``base_url`` at the mock SnowAPI server::
+    Against a local or otherwise compatible server, construct the client
+    directly with an explicit ``base_url``; this skips PAT auth::
 
-        cd cortex/neutrino && make mock-snowapi   # starts on :8084
         client = CortexTrainingClient(
             base_url="http://localhost:8084",
-            database="mydb",
-            schema="public",
+            database="MY_DB",
+            schema="PUBLIC",
         )
 
     Then build one or more sub-jobs and submit::
 
         sub = SubJobConfig.training_job(
-            model_name="gpt2",
-            optimizer={"type": "adamw", "lr": 1e-5},
+            model_name="Qwen/Qwen3-1.7B",
+            optimizer={"name": "AdamW", "lr": 1e-5},
             max_seq_len=2048,
             train_batch_size=1,
+            n_gpus=1,
         )
         job_id = client.create_job(sub_jobs=[sub])
     """
@@ -1067,7 +1069,7 @@ class CortexTrainingClient:
     def create_job_from_body(self, body: dict) -> dict:
         """Create a job from a raw REST CreateJob request body.
 
-        This is useful for tooling that already has the SNOWAPI JSON payload,
+        This is useful for tooling that already has the REST JSON payload,
         while :meth:`create_job` remains the typed path for Python callers.
         """
         if not isinstance(body, dict):
@@ -1087,10 +1089,10 @@ class CortexTrainingClient:
     def _normalize_job_status(status) -> str:
         """Normalize full enum names (``JOB_STATE_RUNNING``) to short form (``running``).
 
-        Coerces to ``str`` first: a Control Plane running ahead of Global
-        Services can return a JobState enum value GS doesn't yet know (e.g. a
-        newly added state), which GS renders as a raw integer rather than a
-        name. Tolerating it keeps :meth:`wait_for_job` polling — an unknown
+        Coerces to ``str`` first: a backend running ahead of the API layer can
+        return a JobState enum value the API layer doesn't yet know (e.g. a
+        newly added state), which is then rendered as a raw integer rather than
+        a name. Tolerating it keeps :meth:`wait_for_job` polling — an unknown
         status is neither ``running`` nor terminal, so it stays in-progress —
         instead of crashing on ``int.lower()``.
         """
@@ -1130,13 +1132,13 @@ class CortexTrainingClient:
         return resp.json().get("jobs", [])
 
     def cancel_job(self, job_id: str) -> None:
-        # GS uses colon-action syntax: /{jobId}:cancel
+        # The REST API uses colon-action syntax: /{jobId}:cancel
         self._send("POST", f"{self._prefix}/{job_id}:cancel")
 
     def get_capacity(self) -> dict:
         """Return the calling account's reserved GPU capacity and current usage.
 
-        Backed by the account-scoped GS endpoint ``/cortex-training/capacity``
+        Backed by the account-scoped endpoint ``/cortex-training/capacity``
         (not under ``/{job_id}``). The account is resolved server-side from the
         caller's session — never from a request field — so a caller can only
         ever read its own account's capacity.
@@ -1148,10 +1150,15 @@ class CortexTrainingClient:
         - ``has_reservation`` (bool): whether the account has a configured GPU
           reservation. When ``False`` the account uses shared/on-demand
           placement and the ``*_gpus`` fields are all 0.
-        - ``reserved_gpus`` (int): total GPUs reserved for the account.
-        - ``in_use_gpus`` (int): GPUs consumed by the account's RUNNING +
-          PLACING jobs.
-        - ``available_gpus`` (int): ``reserved_gpus - in_use_gpus``, floored at 0.
+        - ``reserved_gpus`` (int): total GPUs reserved for the account. The
+          server also returns a ``max_total_gpus`` ceiling that supersedes this
+          field; this method does not surface it yet.
+        - ``in_use_gpus`` (int): GPUs consumed by the account's active
+          (non-terminal) jobs.
+        - ``available_gpus`` (int): remaining capacity, floored at 0.
+
+        See ``docs/reference/rest-api.md`` section 5.4 for the authoritative
+        field list.
         """
         resp = self._send("GET", f"{self._prefix}/capacity")
         body = resp.json()
@@ -1165,7 +1172,7 @@ class CortexTrainingClient:
     def get_experiment_run(self, job_id: str) -> dict[str, str]:
         """Return ``{experiment_name, experiment_run_name}`` for ``job_id``.
 
-        Backed by the GS endpoint ``/cortex-training/{job_id}/experiment-run``.
+        Backed by the endpoint ``/cortex-training/{job_id}/experiment-run``.
         """
         resp = self._send("GET", f"{self._prefix}/{job_id}/experiment-run")
         return resp.json()
@@ -1623,7 +1630,7 @@ class CortexTrainingClient:
         sub_job_id: str | None = None,
         sub_job_type: str | None = None,
     ) -> dict:
-        """Submit a generic data-plane operation through GS/Control Plane."""
+        """Submit a generic data-plane operation to the routed sub-job."""
         body: dict = {"operation_type": operation_type}
         if sub_job_id is not None:
             body["sub_job_id"] = sub_job_id
@@ -1713,25 +1720,27 @@ class CortexTrainingClient:
         sub-jobs (used in RL training loops). Returns request_id.
 
         Multi-sub-job sessions require the operation envelope to include a
-        routing hint. By default, route through the source training sub-job.
+        routing hint; by default the operation is routed through the source
+        training sub-job.
 
-        ***** POST operation
-        https://bbb39214.snowflakecomputing.com/api/v2/databases/neutrino_db/schemas/neutrino_schema/cortex-training/b1fcb345-de6f-40b8-a6b8-c4b4fd02dbec/operation
+        Args:
+            job_id: The job owning both sub-jobs.
+            source_sub_job_id: Training sub-job to read weights from, e.g.
+                ``f"{job_id}:training:0"``.
+            target_sub_job_ids: Sampling sub-jobs to update, e.g.
+                ``[f"{job_id}:sampling:0"]``.
+            weight_format: ``"vllm"`` (server default) or ``"hf"`` for full
+                weights, or ``"lora"`` to broadcast only the adapter tensors.
 
-        body={'operation_type': 'weight-sync',
-              'sub_job_id': 'b1fcb345-de6f-40b8-a6b8-c4b4fd02dbec:training:0',
-              'payload': {
-                  'source_sub_job_id': 'b1fcb345-de6f-40b8-a6b8-c4b4fd02dbec:training:0',
-                  'target_sub_job_ids': ['b1fcb345-de6f-40b8-a6b8-c4b4fd02dbec:sampling:0'],
-                  'weight_format': 'lora',
-              }
-             }
+        Example::
 
             request_id = client.weight_sync(
-                self.training_job_id,
-                source_sub_job_id=self._training_sub_job_id,
-                target_sub_job_ids=[self._sampling_sub_job_id],
+                job_id,
+                source_sub_job_id=f"{job_id}:training:0",
+                target_sub_job_ids=[f"{job_id}:sampling:0"],
+                weight_format="lora",
             )
+            client.poll_request(job_id, request_id)
         """
         body = {
             "source_sub_job_id": source_sub_job_id,  # training
@@ -2106,7 +2115,7 @@ class CortexTrainingClient:
             poll_interval=poll_interval,
         )
 
-    # ─── ZMD scheduling/zone events (read-only) ───────────────────────────
+    # ─── Zone scheduling events (read-only) ───────────────────────────────
 
     def tail_events(
         self,
@@ -2117,10 +2126,13 @@ class CortexTrainingClient:
         sub_job_id: str | None = None,
         sub_job_type: str | None = None,
     ) -> dict:
-        """Fetch one page of ZMD scheduling/zone events for the session.
+        """Fetch one page of zone scheduling events for the session.
 
         Returns ``{"events": [...], "next_cursor": str, "eof": bool}``. Served
-        by the ZMD itself (not routed to a Zone Manager).
+        by the zone dispatcher itself, not routed to a Zone Manager.
+
+        Note: the server does not currently accept this operation; see
+        ``docs/reference/rest-api.md`` section 7.9.
         """
         payload: dict = {}
         if cursor is not None:
@@ -2146,7 +2158,7 @@ class CortexTrainingClient:
         poll_interval: float | None = None,
         follow: bool = True,
     ) -> Iterator[dict]:
-        """Yield ZMD scheduling/zone events for the session, polling with backoff."""
+        """Yield zone scheduling events for the session, polling with backoff."""
         return self._stream_pages(
             lambda cur: self.tail_events(
                 job_id,
@@ -2168,7 +2180,7 @@ class CortexTrainingClient:
         return resp.json().get("checkpoints", [])
 
     def export_checkpoint(self, job_id: str, checkpoint_id: str) -> dict:
-        # GS uses colon-action syntax: /{jobId}/checkpoints/{cpId}:export
+        # The REST API uses colon-action syntax: /{jobId}/checkpoints/{cpId}:export
         resp = self._send(
             "POST",
             f"{self._prefix}/{job_id}/checkpoints/{checkpoint_id}:export",

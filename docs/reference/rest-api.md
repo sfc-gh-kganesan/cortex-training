@@ -1,10 +1,10 @@
 # Cortex Training REST API Reference
 
 > **Status.** This page is a repository snapshot for the client version in this
-> branch. The Cortex Training SNOWAPI OpenAPI specification remains the source of
-> truth for the wire schema.
+> branch. The service's own OpenAPI specification remains the source of truth
+> for the wire schema.
 >
-> **Scope.** This document describes the customer-facing Cortex Training SnowAPI
+> **Scope.** This document describes the customer-facing Cortex Training REST
 > surface used by this repository's `CortexTrainingClient`. It covers REST paths,
 > request framing, asynchronous polling, client-visible schemas, checkpoints,
 > generation, operations, and logs.
@@ -12,9 +12,8 @@
 > **Sources used for this snapshot.** The client and wire implementation in
 > `src/cortex_training/client.py` and `src/cortex_training/wire.py`, the
 > command-line interface in `src/cortex_training/_cli.py`, their unit tests,
-> and the adjacent Cortex Training control-plane protocol/server are the local
-> evidence for this document. The SNOWAPI OpenAPI specification remains the
-> source of truth when it is available.
+> and their unit tests are the local evidence for this document. The service's
+> own OpenAPI specification remains the source of truth when it is available.
 >
 > **Important distinction.** `CortexTrainingClient` is a low-level transport client.
 > ArcticTraining may put additional keys such as `context` and `processing`
@@ -115,9 +114,8 @@ The SQL statements API used by execution-log download is outside this prefix:
 https://{account_host}/api/v2/statements
 ```
 
-The adjacent local mock currently routes `cortex-post-training`, not the
-client's `cortex-training` default. When using that mock, construct the client
-with `endpoint="cortex-post-training"`.
+If you point the client at a server that exposes the endpoint under a
+different name, pass it explicitly: `endpoint="my-endpoint-name"`.
 
 ### 2.2 PAT authentication
 
@@ -336,15 +334,9 @@ Response:
 {"job_id": "job-id"}
 ```
 
-#### Internal debug body
-
-`create_job_from_body()` can forward a top-level `debug` block only when
-`CORTEX_TRAINING_ENABLE_DEBUG_OPTIONS` is truthy (`1`, `true`, `yes`, or `on`).
-This is an internal capability and is separately gated by the server.
-
 ### 5.2 Get job - `GET /{job_id}`
 
-The SnowAPI shape consumed by this repository is flat at each sub-job:
+The response shape consumed by this repository is flat at each sub-job:
 
 ```json
 {
@@ -353,7 +345,6 @@ The SnowAPI shape consumed by this repository is flat at each sub-job:
   "reason": "",
   "created_at": "2026-07-20T18:00:00Z",
   "updated_at": "2026-07-20T18:01:00Z",
-  "image_tag": "release-tag",
   "submitted_by": "SOME_USER",
   "owner_role": "SOME_ROLE",
   "sub_jobs": [
@@ -373,8 +364,7 @@ The SnowAPI shape consumed by this repository is flat at each sub-job:
 }
 ```
 
-`image_tag` can be empty before placement. `wait_for_job()` repeatedly calls
-this endpoint until `running`.
+`wait_for_job()` repeatedly calls this endpoint until `running`.
 
 `submitted_by` (submitting user's name) and `owner_role` (owning role's name)
 are best-effort and may be absent, e.g. if the user/role has since been
@@ -423,8 +413,9 @@ resolves the account from the authenticated session.
 - `available_gpus`: remaining capacity, floored at zero and potentially
   capped by currently schedulable capacity.
 
-Proto3 JSON may omit false or zero fields. `get_capacity()` does not yet
-surface `max_total_gpus`; it fills in defaults for the other four keys.
+Proto3 JSON may omit false or zero fields, so an unreserved account's response
+is literally `{}`. `get_capacity()` does not yet surface `max_total_gpus`; it
+fills in defaults for the other four keys.
 
 ### 5.5 Cancel job - `POST /{job_id}:cancel`
 
@@ -557,9 +548,12 @@ payload = wire.dumps(
 )
 ```
 
-`forward_backward()` splits a frame larger than 60 MiB into DSSST1 request
-chunks. Each chunk is posted to the same path; only the last response may carry
-the `request_id`.
+`forward_backward()` **always** wraps the frame in a DSSST1 request-chunk
+envelope, even when it fits in a single chunk, so every logical operation has a
+caller-generated identity for idempotent replay. Frames larger than 60 MiB are
+split across several chunks. Each chunk is posted to the same path; only the
+last response may carry the `request_id`. See
+[section 9.3](#93-request-chunking).
 
 Typical polled result:
 
@@ -633,10 +627,9 @@ is supplied, the client lowercases and validates it as:
 
 The backend default is `resumable`.
 
-Compatibility caveat: `checkpoint_id` is not represented in the adjacent
-control-plane `SaveRequest`, so it is not forwarded in that control plane's
-save payload. Treat the `checkpoint_id` returned by the polled result as
-authoritative rather than relying on a caller-selected value.
+Compatibility caveat: `checkpoint_id` is not represented in the server's
+`SaveRequest`, so a caller-selected value is not forwarded. Treat the
+`checkpoint_id` returned by the polled result as authoritative.
 
 Immediate response:
 
@@ -648,8 +641,6 @@ Typical result fields include `checkpoint_id`, `checkpoint_path`, and
 `checkpoint_tag`; consumers should use the fields actually present.
 
 ### 6.4 Runtime load - `POST /{job_id}/load`
-
-This endpoint was missing from the previous document.
 
 ```json
 {
@@ -673,7 +664,7 @@ request_id = client.load(
 result = client.poll_request(job_id, request_id)
 ```
 
-When `target_sub_job_id` is omitted, the control plane routes the load to the
+When `target_sub_job_id` is omitted, the service routes the load to the
 session's training sub-job (the historical behavior). When supplied, the sub-job
 must belong to this session — otherwise the request fails with `400` — and must
 be a training sub-job; loading into a non-training (e.g. sampling) zone is
@@ -775,8 +766,9 @@ For pre-tokenized prompts, the client fetches and caches the sampling sub-job's
 `len(prompt) >= max_seq_len`, preserving room for at least one output token.
 String prompts are left for the server tokenizer to validate.
 
-Like forward/backward, generate uses DSSST1 response options and splits frames
-larger than 60 MiB into request chunks.
+Generate uses the same DSSST1 response options as forward/backward, but unlike
+forward/backward it sends the frame unwrapped when it fits, and only splits it
+into request chunks above 60 MiB. See [section 9.3](#93-request-chunking).
 
 Typical polled result:
 
@@ -906,13 +898,13 @@ Content-Type: application/json
 - Operation responses are opaque. If a response contains a `request_id`, poll
   it; otherwise consume it inline.
 
-The adjacent current control plane accepts:
+The service accepts these operation types:
 
 | Operation type | Client method | Execution |
 |---|---|---|
-| `forward` | `forward`, `fwd`, `fwd_no_grad` | Async on the current backend |
+| `forward` | `forward`, `fwd`, `fwd_no_grad` | Async |
 | `weight-sync` | `weight_sync` | Async |
-| `bootstrap-router-replay` | `bootstrap_router_replay` | Inline on the current backend; poll if a deployment returns a request id |
+| `bootstrap-router-replay` | `bootstrap_router_replay` | Inline; poll if a deployment returns a request id |
 | `router-replay-discard` | `router_replay_discard` | Inline |
 | `reset-prefix-cache` | `reset_prefix_cache` | Inline |
 | `cancel-request` | `cancel_request` | Inline acknowledgement |
@@ -939,14 +931,12 @@ require `running`.
 `operation_type="forward"`. The aliases do not add no-gradient semantics.
 
 Byte payloads over 60 MiB are rejected; this operation path is not request
-chunked. The current ArcticTraining Cortex Training adapter still treats no-grad
-forward as unavailable, so this low-level route should not be presented as a
-portable log-probability API.
+chunked. Do not treat this route as a portable log-probability API.
 
-There is also a current wire mismatch: `_operation()` wraps byte payloads in a
-base64 JSON object, while the adjacent operation proxy forwards that JSON to a
-backend `/forward` route that expects raw DSSST1 bytes. Request construction is
-unit-tested, but byte-based `forward()` is not presently end-to-end compatible.
+Known limitation: `_operation()` wraps byte payloads in a base64 JSON object,
+while the server's `/forward` route expects raw DSSST1 bytes. Request
+construction is unit-tested, but byte-based `forward()` is not currently
+end-to-end compatible.
 
 ### 7.2 Weight sync
 
@@ -1037,8 +1027,6 @@ operation receiver.
 
 ### 7.5 Router replay discard
 
-This API was missing from the previous document.
-
 ```json
 {
   "operation_type": "router-replay-discard",
@@ -1113,18 +1101,16 @@ Response:
 `stream_logs()` repeatedly calls this operation. With `follow=False`, it stops
 at an empty EOF page; with `follow=True`, it keeps polling.
 
-### 7.9 Unsupported `zmd-events` client helper
+### 7.9 Unsupported zone-events client helper
 
-`CortexTrainingClient.tail_events()` and `stream_events()` currently send:
+`CortexTrainingClient.tail_events()` and `stream_events()` send:
 
 ```json
 {"operation_type": "zmd-events"}
 ```
 
-However, `zmd-events` is absent from the adjacent control plane's canonical
-supported-operation set and operation registry. The methods are unit-tested
-only for request construction. Treat them as unavailable until the server adds
-the operation or the client removes/changes the helpers.
+The server does not currently accept this operation type, and the methods are
+unit-tested only for request construction. Treat them as unavailable.
 
 ---
 
@@ -1446,7 +1432,7 @@ batch = {
 
 `context` and `processing` are open backend contracts. Their accepted keys,
 registered loss functions, and post-processors come from the deployed training
-backend, not the SnowAPI schema.
+backend, not the REST schema.
 
 Do not use `build_forward_backward_payload()` for this extended shape: that
 helper currently ignores `context` and `processing`.
@@ -1466,7 +1452,7 @@ requirement.
 
 ## 11. Result summary
 
-These are conventional backend results, not closed SnowAPI schemas:
+These are conventional backend results, not closed REST schemas:
 
 | Operation | Common result |
 |---|---|
@@ -1518,11 +1504,11 @@ Return:
 
 Only S3 stage credentials are implemented by this client.
 
-### 12.3 ZMD events
+### 12.3 Zone scheduling events
 
-The client contains `tail_events()` and `stream_events()`, but their
-`zmd-events` operation is not accepted by the current adjacent server. See
-[section 7.9](#79-unsupported-zmd-events-client-helper).
+The client contains `tail_events()` and `stream_events()`, but the server does
+not accept their operation type. See
+[section 7.9](#79-unsupported-zone-events-client-helper).
 
 ---
 
@@ -1692,24 +1678,28 @@ result = client.poll_request(job_id, request_id)
 
 ---
 
-## 14. Current repository compatibility notes
+## 14. Known limitations
 
-These are implementation gaps, not supported API behavior:
+These are current gaps, not supported API behavior:
 
-1. `CortexTrainingEngine.backward()` still uses `torch.save`, while the
-   current server wire protocol is DSSST1 and rejects pickle/torch-save frames.
-2. The README still says the forward/backward CLI serializes with `torch.save`;
-   the CLI helper actually uses DSSST1.
-3. `tail_events()` and `stream_events()` send unsupported `zmd-events`.
-4. `wait_for_job()` does not treat `terminated` as terminal.
-5. `save(checkpoint_id=...)` sends a field that is absent from the adjacent
-   control-plane `SaveRequest`; callers must use the id in the save result.
-6. Generic `forward()` wraps binary input in a base64 JSON payload, but the
-   current adjacent backend expects raw DSSST1 bytes.
-7. Generate prompt validation selects the first sub-job with an
-   `inference_config` rather than explicitly selecting `job_type="sampling"`;
-   a preceding log-probability sub-job can supply the wrong `max_seq_len`.
-8. The local mock's documented/routed endpoint is `cortex-post-training`, while
-   `CortexTrainingClient` defaults to `cortex-training`.
-9. The in-memory mock and its README cover only a subset of the current client
-   surface and should not be used as the complete API inventory.
+1. `save(checkpoint_id=...)` sends a field that is absent from the server's
+   `SaveRequest`, so a caller-selected id is not honored. Use the
+   `checkpoint_id` returned in the save result.
+2. Generic `forward()` wraps binary input in a base64 JSON payload, while the
+   server's `/forward` route expects raw DSSST1 bytes, so byte-based
+   `forward()` is not end-to-end compatible. Request construction is
+   unit-tested; the round trip is not.
+3. `tail_events()` and `stream_events()` send an operation type the server does
+   not accept (see [section 7.9](#79-unsupported-zone-events-client-helper)).
+4. `wait_for_job()` does not treat `terminated` as terminal, so a torn-down job
+   polls until `poll_timeout` rather than failing immediately.
+5. Generate prompt validation resolves `max_seq_len` from the first sub-job
+   carrying an `inference_config` rather than matching `job_type="sampling"`. A
+   `log_probability` sub-job listed first therefore supplies the wrong window.
+6. `get_capacity()` does not surface `max_total_gpus` (see
+   [section 5.4](#54-capacity---get-capacity)); it returns the other four
+   fields, so callers read the deprecated `reserved_gpus`.
+7. `_operation()` writes a debug line to stdout, which corrupts the CLI's JSON
+   output for operation-based commands (`weight-sync`, `tail-logs`,
+   `cancel-request`, `reset-prefix-cache`, router replay). Redirect stdout or
+   parse stderr-free output until this is removed.

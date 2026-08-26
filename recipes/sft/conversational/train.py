@@ -34,17 +34,16 @@ from typing import Any
 
 import chz
 import datasets
-from recipes._shared.cortex_training import build_renderer
-from recipes._shared.cortex_training import collate
-from recipes._shared.cortex_training import forward_backward_step
-from recipes._shared.cortex_training import forward_loss
-from recipes._shared.cortex_training import log_saved_checkpoints
-from recipes._shared.cortex_training import lora_peft_config
-from recipes._shared.cortex_training import make_client
-from recipes._shared.cortex_training import running_job
-from recipes._shared.cortex_training import save_recipe_checkpoints
-from recipes._shared.cortex_training import sequence_from_conversation
-from recipes._shared.cortex_training import use_next_token_labels
+from recipes.utils import build_renderer
+from recipes.utils import collate
+from recipes.utils import forward_backward_step
+from recipes.utils import load_job_body
+from recipes.utils import log_saved_checkpoints
+from recipes.utils import make_client
+from recipes.utils import running_job
+from recipes.utils import save_recipe_checkpoints
+from recipes.utils import sequence_from_conversation
+from recipes.utils import use_next_token_labels
 from tinker_cookbook import renderers
 from tinker_cookbook.utils import ml_log
 
@@ -71,31 +70,12 @@ class Config:
     config: str
     job_id: str | None = None
 
-    model_name: str = "Qwen/Qwen3-8B"
-    n_gpus: int = 4
-    micro_batch_size: int = 1
-    zero_stage: int = 2
-    attn_implementation: str = "flash_attention_3"
-    dtype: str = "bfloat16"
-    seed: int = 42
-    # huggingface for dense / LoRA; prime_rl for MoE with expert parallelism.
-    model_provider: str = "huggingface"
-    ep_size: int | None = None
-
     dataset: str = "who_trained_you"
     dataset_split: str = "train"
-    test_split: str | None = "test"
-    batch_size: int = 8
-    learning_rate: float = 5e-5
-    weight_decay: float = 0.0
-    max_length: int = 2048
     train_on_what: renderers.TrainOnWhat = renderers.TrainOnWhat.ALL_ASSISTANT_MESSAGES
     pad_to_max_length: bool = False
     max_steps: int = 100
 
-    # 0 = dense FT. Set e.g. 32 for LoRA (r == alpha).
-    lora_rank: int = 0
-    eval_every: int = 20
     debug_image_tag: str | None = None
     # False (default): tinker *_disable_thinking renderer when the model has one.
     # True: thinking-on renderer (qwen3 for Qwen3-8B).
@@ -106,59 +86,15 @@ class Config:
     wandb_project: str | None = None
     wandb_name: str | None = None
 
+    # Loaded as the training-only create-job body.
+    job_config: str = "configs/qwen3_8b_full.json"
+
 
 def job_body(config: Config) -> dict:
-    per_step = config.micro_batch_size * config.n_gpus
-    if config.batch_size % per_step != 0:
-        raise ValueError(
-            f"batch_size ({config.batch_size}) must be a multiple of "
-            f"micro_batch_size * n_gpus ({config.micro_batch_size} * "
-            f"{config.n_gpus} = {per_step})"
-        )
-    if config.ep_size is not None:
-        if config.ep_size <= 0:
-            raise ValueError(f"ep_size must be positive, got {config.ep_size}")
-        if config.n_gpus % config.ep_size != 0:
-            raise ValueError(f"n_gpus ({config.n_gpus}) must be a multiple of ep_size ({config.ep_size})")
-
-    training_config: dict[str, Any] = {
-        "model_provider": config.model_provider,
-        "n_gpus": config.n_gpus,
-        "max_seq_len": config.max_length,
-        "train_batch_size": config.batch_size,
-        "attn_implementation": config.attn_implementation,
-        "optimizer": {
-            "name": "AdamW",
-            "lr": config.learning_rate,
-            "weight_decay": config.weight_decay,
-            "betas": [0.9, 0.999],
-            "eps": 1e-8,
-        },
-        "ds_config": {
-            "train_batch_size": config.batch_size,
-            "train_micro_batch_size_per_gpu": config.micro_batch_size,
-            "gradient_accumulation_steps": config.batch_size // per_step,
-            "zero_optimization": {"stage": config.zero_stage},
-            "bf16": {"enabled": True},
-        },
-    }
-    if config.ep_size is not None:
-        training_config["ep_size"] = config.ep_size
-    peft = lora_peft_config(config.lora_rank)
-    if peft is not None:
-        training_config["peft_config"] = peft
-
-    body: dict[str, Any] = {
-        "sub_job_configs": [
-            {
-                "job_type": "training",
-                "model_name": config.model_name,
-                "dtype": config.dtype,
-                "seed": config.seed,
-                "training_config": training_config,
-            }
-        ]
-    }
+    body = load_job_body(
+        config.job_config,
+        search_dirs=(_RECIPE_DIR, _RECIPE_DIR / "configs"),
+    )
     if config.debug_image_tag:
         body["debug"] = {"job": {"image_tag": config.debug_image_tag}}
     return body
@@ -195,91 +131,31 @@ def load_chat_dataset(
     dataset: str,
     *,
     dataset_split: str,
-    test_split: str | None,
     n_train: int,
-    n_test: int,
-) -> tuple[datasets.Dataset, datasets.Dataset | None]:
+) -> datasets.Dataset:
     source = resolve_chat_dataset(dataset)
     if _is_local_chat_file(source):
-        data_files: dict[str, str] = {dataset_split: source}
-        if test_split:
-            data_files[test_split] = source
-        loaded = datasets.load_dataset("json", data_files=data_files)
+        loaded = datasets.load_dataset("json", data_files={dataset_split: source})
     else:
         loaded = datasets.load_dataset(source)
     if not isinstance(loaded, datasets.DatasetDict):
         loaded = datasets.DatasetDict({dataset_split: loaded})
-
-    train_dataset = tile_rows(loaded[dataset_split], n_train).shuffle(seed=0)
-    test_dataset = None
-    if test_split:
-        if test_split in loaded:
-            test_dataset = tile_rows(loaded[test_split], n_test)
-        else:
-            logger.info(
-                "%s has no %s split; skipping test/nll (available: %s)",
-                dataset,
-                test_split,
-                list(loaded),
-            )
-    return train_dataset, test_dataset
-
-
-def eval_nll(
-    client,
-    job_id: str,
-    test_dataset,
-    renderer,
-    train_on_what: renderers.TrainOnWhat,
-    *,
-    pad_token_id: int,
-    max_length: int,
-    batch_size: int,
-    pad_to_max_length: bool,
-    next_token_labels: bool = False,
-) -> dict[str, float]:
-    """Mean CE loss on the held-out split via forward-backward (no optimizer step)."""
-    if test_dataset is None or len(test_dataset) < batch_size:
-        return {}
-    n_batches = len(test_dataset) // batch_size
-    losses: list[float] = []
-    n_sequences = 0
-    for batch_idx in range(n_batches):
-        start = batch_idx * batch_size
-        rows = test_dataset.select(range(start, start + batch_size))
-        sequences = [
-            sequence_from_conversation(
-                row["messages"],
-                renderer,
-                train_on_what=train_on_what,
-                max_seq_len=max_length,
-                next_token_labels=next_token_labels,
-            )
-            for row in rows
-        ]
-        kwargs, _ = collate(
-            sequences,
-            pad_token_id=pad_token_id,
-            max_seq_len=max_length,
-            pad_to_max_seq_len=pad_to_max_length,
-        )
-        result = forward_loss(client, job_id, kwargs)
-        losses.append(float(result["avg_loss"]))
-        n_sequences += len(sequences)
-    return {
-        "test/nll": sum(losses) / len(losses),
-        "test/num_examples": float(n_sequences),
-    }
-
-
-def _should_eval(step: int, every: int, total_steps: int) -> bool:
-    return every > 0 and (step % every == 0 or step == total_steps - 1)
+    return tile_rows(loaded[dataset_split], n_train).shuffle(seed=0)
 
 
 def main(config: Config):
     if config.debug_image_tag:
         os.environ[DEBUG_OPTIONS_ENV] = "1"
         logger.info("Using debug image_tag=%s", config.debug_image_tag)
+
+    body = job_body(config)
+    training_sub = next((sub for sub in body.get("sub_job_configs") or () if sub.get("job_type") == "training"), {})
+    training = training_sub.get("training_config") or {}
+    batch_size = int(training.get("train_batch_size"))
+    max_seq_len = int(training.get("max_seq_len"))
+    learning_rate = float((training.get("optimizer") or {}).get("lr"))
+    model_provider = str(training.get("model_provider") or "huggingface")
+    model_name = training_sub.get("model_name")
 
     ml_logger = ml_log.setup_logging(
         log_dir=config.log_path,
@@ -290,7 +166,7 @@ def main(config: Config):
     )
 
     tokenizer, renderer, renderer_name = build_renderer(
-        config.model_name,
+        model_name,
         renderer_name=config.renderer_name,
         enable_thinking=config.enable_thinking,
     )
@@ -300,59 +176,41 @@ def main(config: Config):
         renderer_name,
         config.enable_thinking,
     )
-    next_token_labels = use_next_token_labels(config.model_provider)
+    next_token_labels = use_next_token_labels(model_provider)
 
     logger.info("Loading dataset...")
-    train_dataset, test_dataset = load_chat_dataset(
+    train_dataset = load_chat_dataset(
         config.dataset,
         dataset_split=config.dataset_split,
-        test_split=config.test_split,
-        n_train=config.max_steps * config.batch_size,
-        n_test=config.batch_size,
+        n_train=config.max_steps * batch_size,
     )
 
-    n_train_batches = len(train_dataset) // config.batch_size
-    n_dropped = len(train_dataset) % config.batch_size
+    n_train_batches = len(train_dataset) // batch_size
+    n_dropped = len(train_dataset) % batch_size
     if n_dropped:
-        logger.info(f"Dropping last {n_dropped} examples to keep batch size uniform at {config.batch_size}")
+        logger.info(f"Dropping last {n_dropped} examples to keep batch size uniform at {batch_size}")
     total_steps = min(n_train_batches, config.max_steps)
     logger.info(f"Train batches: {n_train_batches}; training for {total_steps} steps")
 
     client = make_client(config.config)
 
-    with running_job(client, job_body(config), job_id=config.job_id) as job_id:
+    with running_job(client, body, job_id=config.job_id) as job_id:
         for step in range(total_steps):
             start_time = time.time()
             metrics: dict[str, float] = {}
 
-            if _should_eval(step, config.eval_every, total_steps):
-                metrics.update(
-                    eval_nll(
-                        client,
-                        job_id,
-                        test_dataset,
-                        renderer,
-                        config.train_on_what,
-                        pad_token_id=pad_token_id,
-                        max_length=config.max_length,
-                        batch_size=config.batch_size,
-                        pad_to_max_length=config.pad_to_max_length,
-                        next_token_labels=next_token_labels,
-                    )
-                )
-
             # Linear learning rate schedule, applied on the server per step.
             lr_mult = max(0.0, 1.0 - step / max(n_train_batches, 1))
-            current_lr = config.learning_rate * lr_mult
+            current_lr = learning_rate * lr_mult
 
-            batch_start = step * config.batch_size
-            batch_rows = train_dataset.select(range(batch_start, batch_start + config.batch_size))
+            batch_start = step * batch_size
+            batch_rows = train_dataset.select(range(batch_start, batch_start + batch_size))
             sequences = [
                 sequence_from_conversation(
                     row["messages"],
                     renderer,
                     train_on_what=config.train_on_what,
-                    max_seq_len=config.max_length,
+                    max_seq_len=max_seq_len,
                     next_token_labels=next_token_labels,
                 )
                 for row in batch_rows
@@ -360,7 +218,7 @@ def main(config: Config):
             kwargs, _ = collate(
                 sequences,
                 pad_token_id=pad_token_id,
-                max_seq_len=config.max_length,
+                max_seq_len=max_seq_len,
                 pad_to_max_seq_len=config.pad_to_max_length,
             )
             fwd_bwd_result, step_result = forward_backward_step(client, job_id, kwargs, learning_rate=current_lr)
@@ -370,7 +228,7 @@ def main(config: Config):
             metrics.update(step_result.get("metrics") or {})
 
             metrics.update(
-                train_mean_nll=train_loss,
+                train_nll=train_loss,
                 global_steps=step_result.get("global_steps", step + 1),
                 progress=step / n_train_batches,
                 time_total=time.time() - start_time,
@@ -384,12 +242,10 @@ def main(config: Config):
             job_id=job_id,
             saved=saved,
             sampling_command="sample",
-            lora_rank=config.lora_rank,
+            job_config=Path(config.job_config).name,
             sample_prompt=sample_prompt,
             enable_thinking=config.enable_thinking,
             renderer_name=config.renderer_name,
-            model_name=config.model_name,
-            n_gpus=config.n_gpus,
             temperature=0 if sample_prompt else None,
         )
 

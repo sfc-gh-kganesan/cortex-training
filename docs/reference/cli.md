@@ -5,21 +5,24 @@ supported command-line and SDK interfaces for Cortex Training.
 
 ## Installation
 
-Requires Python 3.8+. Installing the package gives you the `cortex-training` CLI,
-the `cortex-training tui` log viewer, and the `cortex_training` Python SDK.
+Requires Python 3.10+. Installing the package gives you the `cortex-training`
+CLI, the `cortex-training tui` log viewer, and the `cortex_training` Python SDK.
+
+This project uses [uv](https://docs.astral.sh/uv/); `pip` works in place of
+`uv pip` throughout if you prefer.
 
 Install straight from the repository:
 
 ```bash
-pip install "cortex-training @ git+https://github.com/Snowflake-AI-Research/Arctic-Platform.git#subdirectory=cortex_training"
+uv pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
 ```
 
 Or from a local checkout:
 
 ```bash
-git clone https://github.com/Snowflake-AI-Research/Arctic-Platform.git
-cd Arctic-Platform/cortex_training
-pip install "."             # add -e for an editable/dev install
+git clone https://github.com/Snowflake-AI-Research/cortex-training.git
+cd cortex-training
+uv pip install .            # add -e for an editable/dev install
 ```
 
 Verify the install:
@@ -31,7 +34,8 @@ cortex-training tui --help
 
 ## Cortex Training Jobs CLI
 
-`cortex-training` submits and manages Cortex Training jobs through the SNOWAPI endpoint.
+`cortex-training` submits and manages Cortex Training jobs through the Cortex
+Training REST endpoint.
 The normal workflow is:
 
 1. Create a connection config JSON.
@@ -46,7 +50,7 @@ For Snowflake PAT auth, use `host` for the account hostname. Do not use
 
 ```json
 {
-  "host": "dsa-test.qa6.us-west-2.aws.snowflakecomputing.com",
+  "host": "ACCOUNT.snowflakecomputing.com",
   "pat": "YOUR_PROGRAMMATIC_ACCESS_TOKEN",
   "database": "CORTEX_TRAINING_DB",
   "schema": "PUBLIC",
@@ -64,7 +68,8 @@ shell instead:
 export CORTEX_TRAINING_PAT='YOUR_PROGRAMMATIC_ACCESS_TOKEN'
 ```
 
-For a local/mock SNOWAPI server, use `base_url` with an explicit scheme:
+To target a local or otherwise compatible server instead of a Snowflake
+account, use `base_url` with an explicit scheme. This skips PAT auth:
 
 ```json
 {
@@ -134,12 +139,17 @@ Print the caller account's reserved GPU capacity and current usage:
 cortex-training capacity
 ```
 
-The response includes `has_reservation`, `reserved_gpus`, `in_use_gpus`, and
+The command prints `has_reservation`, `reserved_gpus`, `in_use_gpus`, and
 `available_gpus`.
+
+The server also returns a `max_total_gpus` ceiling that supersedes
+`reserved_gpus`, but the client does not surface it yet, so `reserved_gpus` is
+what you get today. See
+[REST API reference section 5.4](rest-api.md#54-capacity---get-capacity).
 
 ### Submit A Job
 
-The submit command expects a SNOWAPI CreateJob JSON body:
+The submit command expects a CreateJob JSON body:
 
 ```json
 {
@@ -174,25 +184,6 @@ cortex-training submit examples/api/sampling.json
 That file creates a training sub-job for `Qwen/Qwen3.6-35B-A3B` with
 `training_config.model_provider` set to `prime_rl`.
 
-#### Debug options (internal only)
-
-A CreateJob body may carry a `debug` block — e.g. an `image_tag` override that
-pins a job's dynamically-provisioned zone to a specific `Cortex Training backend` build, so
-you can test a build without a deployment-configuration change:
-
-```json
-{
-  "sub_job_configs": [ ... ],
-  "debug": { "job": { "image_tag": "release_20260622_<sha>" } }
-}
-```
-
-This is an internal-only capability. The client refuses to send a request
-carrying a `debug` block unless `CORTEX_TRAINING_ENABLE_DEBUG_OPTIONS` is set to a
-truthy value (`1`/`true`/`yes`/`on`); otherwise the submit fails fast client-side.
-The directives are also gated server-side by the `CORTEX_TRAINING_ENABLE_DEBUG_OPTIONS`
-account parameter.
-
 ### Run A Forward-Backward Smoke Test
 
 After the training job is running, send one tokenized training batch:
@@ -205,8 +196,9 @@ cortex-training --job-id JOB_ID step
 The fwd-bwd JSON is human-readable: it contains text samples, tokenizer
 settings, batch size, sequence length, `position_ids`, and label generation
 settings. The CLI tokenizes the text, builds tensor kwargs, serializes
-`{"args": (), "kwargs": ...}` with `torch.save`, submits
-`forward_backward`, and polls the request by default. Set `"poll": false` in
+`{"args": (), "kwargs": ...}` as a DSSST1 safetensors frame (see
+[REST API reference section 9](rest-api.md#9-dssst1-binary-wire-protocol)),
+submits `forward_backward`, and polls the request by default. Set `"poll": false` in
 the JSON to print only the submitted `request_id`.
 
 Text payloads require `transformers` in the client environment. You can also
@@ -243,7 +235,7 @@ To load into a specific training sub-job (useful for multi-sub-job sessions):
 cortex-training --job-id JOB_ID load CHECKPOINT_ID --target-sub-job-id JOB_ID:training:0
 ```
 
-When `--target-sub-job-id` is omitted, the control plane routes the load to the
+When `--target-sub-job-id` is omitted, the service routes the load to the
 session's training sub-job. Sampling sub-jobs are not valid targets.
 
 #### Discovering Sub-Job IDs
@@ -262,8 +254,12 @@ for sub_job in job["sub_jobs"]:
 Or via CLI:
 
 ```bash
-cortex-training --job-id JOB_ID get | jq '.sub_jobs[] | select(.job_type=="training") | {sub_job_id, n_gpus: .training_config.n_gpus}'
+cortex-training get JOB_ID | jq '.sub_jobs[] | select(.job_type=="training") | {sub_job_id, n_gpus: .training_config.n_gpus}'
 ```
+
+`get` takes the job id as a positional argument, so `--job-id` is not used here.
+The global `--job-id` option is only for the data-plane subcommands that have no
+positional job id (`fwd-bwd`, `step`, `load`, `generate`, `weight-sync`).
 
 #### When to Use target-sub-job-id
 
@@ -400,21 +396,29 @@ cortex-training tui JOB_ID --host ACCOUNT.snowflakecomputing.com --pat YOUR_PAT 
 cortex-training tui JOB_ID --base-url http://localhost:8084   # local/mock
 ```
 
-For example, against the qa6 test account (PAT kept out of the command via an
-env var; omit `JOB_ID` to open the job picker):
+Keep the PAT out of your shell history by exporting it instead (omit `JOB_ID`
+to open the job picker):
 
 ```bash
+export CORTEX_TRAINING_PAT='YOUR_PROGRAMMATIC_ACCESS_TOKEN'
 cortex-training tui \
-  --host dsa-test.qa6.us-west-2.aws.snowflakecomputing.com \
-  --pat "$CORTEX_TRAINING_QA6_PAT" \
-  --database DSA_TEST_DB --schema PUBLIC
+  --host ACCOUNT.snowflakecomputing.com \
+  --database CORTEX_TRAINING_DB --schema PUBLIC
 ```
+
+Pass `--sub-job-id JOB_ID:training:0` to open one sub-job's log directly instead
+of the source list.
 
 The left panel lists the job's sub-jobs; select one to tail its logs (the
 zone-manager pod is the Ray head, so a sub-job's worker output is included).
 Logs are cached locally so reopening a job replays instantly without
 re-fetching from the server — under `~/.cache/cortex-training/` (or
 `$XDG_CACHE_HOME`), overridable with `CORTEX_TRAINING_TUI_CACHE_DIR`.
+
+The TUI also writes two files into your home directory: saved logs from the `s`
+key (`~/cortex-training-<job8>-<source>.log`, where `<job8>` is the first eight
+characters of the job id) and its own error log
+(`~/.cortex-training-errors.log`).
 
 Keys in the log view:
 
@@ -423,8 +427,9 @@ Keys in the log view:
 | `/` | Filter the current source |
 | `L` | Cycle minimum log level (INFO / WARNING / ERROR) |
 | `p` | Pause / resume auto-scroll |
-| `s` | Save the current source to `~/cortex-training-<job>-<source>.log` |
-| `y` | Copy the visible log to the clipboard |
+| `s` | Save the current source to `~/cortex-training-<job8>-<source>.log` |
+| `y` | Copy the whole log to the clipboard |
+| `c` | Copy the current selection |
 | `r` | Refresh the sub-job list |
 | `[` / `]` | Narrow / widen the sources panel |
 | `b` / `esc` | Back |
@@ -452,9 +457,6 @@ SNOWFLAKE_SCHEMA
 CORTEX_TRAINING_ENDPOINT
 ```
 
-`CORTEX_TRAINING_ENABLE_DEBUG_OPTIONS` (truthy) unlocks sending CreateJob `debug`
-options — see [Debug options (internal only)](#debug-options-internal-only).
-
 ### Troubleshooting
 
 If you see `provide --base-url for local/mock use, or both --host and --pat`,
@@ -466,4 +468,4 @@ Snowflake hostname as `base_url`. Use `host` for Snowflake PAT auth, or use a
 full local/mock URL such as `http://localhost:8084` for `base_url`.
 
 For server errors, the CLI prints any Snowflake request id and response body
-returned by SNOWAPI. Include those details when debugging a `500`.
+returned by the service. Include those details when debugging a `500`.

@@ -1,8 +1,16 @@
 # Tinker Cookbook
 
-The current conversational SFT and Math GRPO recipes are adapted from Tinker
-Cookbook workflows while using the Cortex Training client for execution.
+The [conversational SFT](../../recipes/sft/conversational/README.md) and
+[Math GRPO](../../recipes/rl/math_grpo/README.md) recipes are adapted from
+[Tinker Cookbook](https://github.com/thinking-machines-lab/tinker-cookbook)
+workflows, and run on Cortex Training for execution.
 
-Future ports should be filed by task under `recipes/` and record Tinker
-Cookbook in `recipe.yaml` provenance rather than creating a second cookbook
-hierarchy.
+The recipes depend on the cookbook at run time for chat rendering, tokenizer
+lookup and metric logging, so it is a required install for them:
+
+```bash
+uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
+```
+
+Each adapted recipe records its upstream source under `provenance` in its
+`recipe.yaml`.

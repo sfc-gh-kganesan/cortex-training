@@ -18,12 +18,17 @@ python -m recipes.sft.conversational.train \
   max_steps=2
 ```
 
-The default requests eight GPUs. Check capacity first and adjust `n_gpus`,
-`batch_size`, and `micro_batch_size` together when needed.
+The default job config, `configs/qwen3_8b_full.json`, requests four GPUs and
+runs full-parameter training, so check capacity first. GPU count, batch shape,
+sequence length and LoRA all live in that JSON rather than on the command line --
+pass a different one with `job_config=`, for example
+`job_config=configs/qwen3_8b_lora.json` for the lighter LoRA path. See
+[sizing and batching](../concepts/sizing-and-batching.md).
 
 For a longer run, dataset changes, dense training, and MoE configuration, see
 the [conversational SFT recipe](../../recipes/sft/conversational/README.md).
 
-Evaluation before and after training is still planned. Until that workflow is
-implemented, confirm that training loss is recorded and decreases during a
-longer run.
+There is no packaged before/after evaluation workflow yet. To confirm the run
+worked, check that `train_mean_nll` and `test/nll` fall over a longer run, then
+run the sampling command the recipe prints after it saves its checkpoint -- on
+the default memorize task the answer should be `Snowflake AI Research`.

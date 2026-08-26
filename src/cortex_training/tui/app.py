@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Read-only Textual TUI for Cortex Training logs and scheduling events.
+"""Read-only Textual TUI for Cortex Training job logs and scheduling events.
 
 Flow: open → a list of jobs with their status (via the SDK's list_jobs) →
 pick one → its log sources (zone server / job orchestration / Ray head /

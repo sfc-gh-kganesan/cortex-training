@@ -32,27 +32,26 @@ import statistics
 import time
 from dataclasses import dataclass
 from dataclasses import field
+from pathlib import Path
 from typing import Any
 
 import chz
-from recipes._shared.cortex_training import TrainSequence
-from recipes._shared.cortex_training import bootstrap_router_replay
-from recipes._shared.cortex_training import build_renderer
-from recipes._shared.cortex_training import collate
-from recipes._shared.cortex_training import discard_router_replay
-from recipes._shared.cortex_training import forward_backward_step
-from recipes._shared.cortex_training import log_saved_checkpoints
-from recipes._shared.cortex_training import lora_peft_config
-from recipes._shared.cortex_training import make_client
-from recipes._shared.cortex_training import router_replay_config
-from recipes._shared.cortex_training import router_replay_stop_params
-from recipes._shared.cortex_training import running_job
-from recipes._shared.cortex_training import sampling_params_with_sample_ids
-from recipes._shared.cortex_training import sampling_sub_job_id
-from recipes._shared.cortex_training import save_recipe_checkpoints
-from recipes._shared.cortex_training import sequence_from_rollout
-from recipes._shared.cortex_training import stop_params_for
-from recipes._shared.cortex_training import sync_weights
+from recipes.utils import TrainSequence
+from recipes.utils import bootstrap_router_replay
+from recipes.utils import build_renderer
+from recipes.utils import collate
+from recipes.utils import discard_router_replay
+from recipes.utils import forward_backward_step
+from recipes.utils import load_job_body
+from recipes.utils import log_saved_checkpoints
+from recipes.utils import make_client
+from recipes.utils import router_replay_stop_params
+from recipes.utils import running_job
+from recipes.utils import sampling_params_with_sample_ids
+from recipes.utils import save_recipe_checkpoints
+from recipes.utils import sequence_from_rollout
+from recipes.utils import stop_params_for
+from recipes.utils import sync_weights
 from tinker_cookbook.utils import ml_log
 
 from cortex_training.client import DEBUG_OPTIONS_ENV
@@ -64,6 +63,8 @@ logging.getLogger("tinker_cookbook.renderers.base").setLevel(logging.ERROR)
 
 # Match MathEnv / ProblemEnv defaults.
 FORMAT_COEF = 0.1
+_RECIPE_DIR = Path(__file__).resolve().parent
+_CONFIG_SEARCH_DIRS = (_RECIPE_DIR, _RECIPE_DIR / "configs")
 
 
 @dataclass
@@ -211,20 +212,6 @@ class Config:
     config: str
     job_id: str | None = None
 
-    model_name: str = "Qwen/Qwen3-8B"
-    training_gpus: int = 4
-    sampling_gpus: int = 4
-    gpu_memory_utilization: float = 0.4
-    micro_batch_size: int = 1
-    zero_stage: int = 2
-    attn_implementation: str = "flash_attention_3"
-    dtype: str = "bfloat16"
-    seed: int = 0
-    max_seq_len: int = 8192
-    # huggingface for dense / LoRA; prime_rl for MoE with expert parallelism.
-    model_provider: str = "huggingface"
-    ep_size: int | None = None
-
     problems_per_batch: int = 64
     group_size: int = 16
     max_tokens: int = 4096
@@ -232,32 +219,17 @@ class Config:
     top_p: float = 1.0
     format_coef: float = FORMAT_COEF
 
-    train_batch_size: int = 8
-    max_tokens_per_mb: int = 10240
-    learning_rate: float = 2e-5
-    weight_decay: float = 0.0
-
-    adam_beta1: float = 0.9
-    adam_beta2: float = 0.95
-    adam_eps: float = 1e-8
-    gradient_clipping: float | None = 1.0
     max_steps: int | None = None  # full epoch (~188 batches at batch=64)
     eps_clip: float = 0.2
     loss_agg_mode: str = "token-mean"
     entropy_coeff: float = 0.0
     remove_constant_reward_groups: bool = True
 
-    # 0 = dense FT. Set e.g. 32 for LoRA (r == alpha).
-    lora_rank: int = 32
-
-    router_replay: bool = False
-    router_replay_max_cache_bytes: int | None = None
-
     debug_image_tag: str | None = None
 
     # Evals. 0 disables; otherwise baseline at batch 0, every N, and the last batch.
     eval_every: int = 10
-    # Caps sampling.evaluate max_examples. None runs the full split.
+    # Caps recipes.inference.evaluate max_examples. None runs the full split.
     n_test: int | None = None
     eval_temperature: float | None = None
     eval_max_tokens: int | None = None
@@ -266,94 +238,12 @@ class Config:
     wandb_project: str | None = None
     wandb_name: str | None = None
 
+    # Loaded as the colocated sampling + training create-job body.
+    job_config: str = "configs/qwen3_8b_lora.json"
+
 
 def job_body(config: Config) -> dict:
-    per_step = config.micro_batch_size * config.training_gpus
-    if config.train_batch_size % per_step != 0:
-        raise ValueError(
-            f"train_batch_size ({config.train_batch_size}) must be a multiple of "
-            f"micro_batch_size * training_gpus ({config.micro_batch_size} * "
-            f"{config.training_gpus} = {per_step})"
-        )
-    if config.ep_size is not None:
-        if config.ep_size <= 0:
-            raise ValueError(f"ep_size must be positive, got {config.ep_size}")
-        if config.training_gpus % config.ep_size != 0:
-            raise ValueError(
-                f"training_gpus ({config.training_gpus}) must be a multiple of ep_size ({config.ep_size})"
-            )
-
-    training_config: dict = {
-        "model_provider": config.model_provider,
-        "n_gpus": config.training_gpus,
-        "max_seq_len": config.max_seq_len,
-        "train_batch_size": config.train_batch_size,
-        "attn_implementation": config.attn_implementation,
-        "optimizer": {
-            "name": "AdamW",
-            "lr": config.learning_rate,
-            "weight_decay": config.weight_decay,
-            "betas": [config.adam_beta1, config.adam_beta2],
-            "eps": config.adam_eps,
-        },
-        "mb_spec": {"max_tokens_per_mb": config.max_tokens_per_mb},
-        "ds_config": {
-            "train_batch_size": config.train_batch_size,
-            "train_micro_batch_size_per_gpu": config.micro_batch_size,
-            "gradient_accumulation_steps": config.train_batch_size // per_step,
-            "zero_optimization": {"stage": config.zero_stage, "reduce_scatter": True},
-            "bf16": {"enabled": True},
-        },
-    }
-    if config.ep_size is not None:
-        training_config["ep_size"] = config.ep_size
-    if config.model_provider == "prime_rl" and config.router_replay:
-        training_config["prime_rl"] = {
-            "fused_cross_entropy": False,
-        }
-    peft = lora_peft_config(config.lora_rank)
-    if peft is not None:
-        training_config["peft_config"] = peft
-    if config.gradient_clipping is not None:
-        training_config["gradient_clipping"] = config.gradient_clipping
-    if config.router_replay:
-        training_config["router_replay"] = router_replay_config(
-            max_cache_bytes=config.router_replay_max_cache_bytes,
-        )
-
-    inference_config: dict = {
-        "max_seq_len": config.max_seq_len,
-        "n_gpus": config.sampling_gpus,
-        "vllm_config": {
-            "max_model_len": config.max_seq_len,
-            "gpu_memory_utilization": config.gpu_memory_utilization,
-        },
-    }
-    if peft is not None:
-        inference_config["peft_config"] = peft
-    if config.router_replay:
-        inference_config["router_replay"] = router_replay_config(
-            max_cache_bytes=config.router_replay_max_cache_bytes,
-        )
-
-    body: dict = {
-        "sub_job_configs": [
-            {
-                "job_type": "sampling",
-                "model_name": config.model_name,
-                "dtype": config.dtype,
-                "seed": config.seed,
-                "inference_config": inference_config,
-            },
-            {
-                "job_type": "training",
-                "model_name": config.model_name,
-                "dtype": config.dtype,
-                "seed": config.seed,
-                "training_config": training_config,
-            },
-        ]
-    }
+    body = load_job_body(config.job_config, search_dirs=_CONFIG_SEARCH_DIRS)
     if config.debug_image_tag:
         body["debug"] = {"job": {"image_tag": config.debug_image_tag}}
     return body
@@ -395,12 +285,30 @@ def main(config: Config):
 
 
 def _train(config: Config, ml_logger: Any) -> None:
-    tokenizer, renderer, renderer_name = build_renderer(config.model_name)
+    body = job_body(config)
+    subs = {sub.get("job_type"): sub for sub in body.get("sub_job_configs") or ()}
+    training_sub = subs.get("training") or {}
+    sampling_sub = subs.get("sampling") or {}
+    training = training_sub.get("training_config") or {}
+    sampling = sampling_sub.get("inference_config") or {}
+    learning_rate = float((training.get("optimizer") or {}).get("lr"))
+    max_seq_len = int(training.get("max_seq_len") or sampling.get("max_seq_len"))
+    lora_rank = int((training.get("peft_config") or sampling.get("peft_config") or {}).get("r") or 0)
+    router_replay = bool(
+        (training.get("router_replay") or {}).get("enabled")
+        or (sampling.get("router_replay") or {}).get("enabled")
+    )
+    router_replay_max_cache_bytes = (training.get("router_replay") or {}).get("max_cache_bytes")
+    model_name = training_sub.get("model_name") or sampling_sub.get("model_name")
+    seed = training_sub.get("seed", sampling_sub.get("seed", 42))
+    seed = 42 if seed is None else int(seed)
+
+    tokenizer, renderer, renderer_name = build_renderer(model_name)
     pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
     logger.info("Using renderer: %s", renderer_name)
 
     logger.info("Loading MATH dataset...")
-    math_dataset = load_math(seed=config.seed)
+    math_dataset = load_math(seed=seed)
     train_problems = math_dataset.train
 
     n_train_batches = len(train_problems) // config.problems_per_batch
@@ -415,7 +323,7 @@ def _train(config: Config, ml_logger: Any) -> None:
 
     stop_params = (
         router_replay_stop_params(renderer.get_stop_sequences(), tokenizer)
-        if config.router_replay
+        if router_replay
         else stop_params_for(renderer.get_stop_sequences())
     )
     sampling_params = dict(
@@ -449,27 +357,27 @@ def _train(config: Config, ml_logger: Any) -> None:
                 format_coef=config.format_coef,
             )
             logger.info("Held-out MATH-500 on %d problems", len(evaluator.prompts))
-        logger.info("After save, also run sampling.evaluate (MATH-500)")
+        logger.info("After save, also run recipes.inference.evaluate (MATH-500)")
 
     client = make_client(config.config)
 
-    with running_job(client, job_body(config), job_id=config.job_id) as job_id:
+    with running_job(client, body, job_id=config.job_id) as job_id:
         sampling_job_id: str | None = None
-        if config.router_replay:
+        if router_replay:
             logger.info("Bootstrapping router replay for job %s", job_id)
             bootstrap_router_replay(
                 client,
                 job_id,
-                max_cache_bytes=config.router_replay_max_cache_bytes,
+                max_cache_bytes=router_replay_max_cache_bytes,
             )
-            sampling_job_id = sampling_sub_job_id(job_id)
+            sampling_job_id = f"{job_id}:sampling:0"
 
         for batch_idx in range(total_steps):
             t_start = time.time()
             metrics: dict[str, float] = {
                 "progress/batch": batch_idx,
                 "progress/done_frac": (batch_idx + 1) / max(n_train_batches, 1),
-                "optim/lr": config.learning_rate,
+                "optim/lr": learning_rate,
             }
 
             if evaluator is not None and _should_eval(batch_idx, total_steps, config.eval_every):
@@ -489,7 +397,7 @@ def _train(config: Config, ml_logger: Any) -> None:
 
             sample_ids_D = [f"rl-{batch_idx}-{rollout_idx}" for rollout_idx in range(len(prompts_D))]
             generate_params: dict | list[dict] = sampling_params
-            if config.router_replay:
+            if router_replay:
                 generate_params = sampling_params_with_sample_ids(sampling_params, sample_ids_D)
 
             request_id = client.generate(job_id, prompts=prompts_D, sampling_params=generate_params)
@@ -552,7 +460,7 @@ def _train(config: Config, ml_logger: Any) -> None:
                 kwargs, context = collate(
                     datums_D,
                     pad_token_id=pad_token_id,
-                    max_seq_len=config.max_seq_len,
+                    max_seq_len=max_seq_len,
                     with_rl_context=True,
                     temperature=config.temperature,
                 )
@@ -561,9 +469,9 @@ def _train(config: Config, ml_logger: Any) -> None:
                     job_id,
                     kwargs,
                     context=context,
-                    learning_rate=config.learning_rate,
+                    learning_rate=learning_rate,
                     processing=processing_block(config, global_batch_size=len(datums_D)),
-                    rr_sample_ids=(trained_sample_ids if config.router_replay else None),
+                    rr_sample_ids=(trained_sample_ids if router_replay else None),
                     router_replay_sampling_job_id=sampling_job_id,
                 )
                 train_loss = float(fwd_bwd_result["avg_loss"])
@@ -572,10 +480,10 @@ def _train(config: Config, ml_logger: Any) -> None:
                 sync_weights(
                     client,
                     job_id,
-                    weight_format="lora" if config.lora_rank > 0 else None,
+                    weight_format="lora" if lora_rank > 0 else None,
                 )
 
-            if config.router_replay:
+            if router_replay:
                 trained_id_set = set(trained_sample_ids)
                 unused_sample_ids = [sample_id for sample_id in sample_ids_D if sample_id not in trained_id_set]
                 if unused_sample_ids:
@@ -600,14 +508,11 @@ def _train(config: Config, ml_logger: Any) -> None:
             config_path=config.config,
             job_id=job_id,
             saved=saved,
-            lora_rank=config.lora_rank,
             sampling_command="evaluate",
-            model_name=config.model_name,
-            n_gpus=config.sampling_gpus,
+            job_config=Path(config.job_config).name,
             temperature=(config.temperature if config.eval_temperature is None else config.eval_temperature),
             max_tokens=config.eval_max_tokens or config.max_tokens,
             top_p=config.top_p,
-            seed=config.seed,
             max_examples=config.n_test,
         )
 

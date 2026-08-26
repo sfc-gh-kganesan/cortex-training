@@ -129,7 +129,7 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
-        description="Manage Cortex Training jobs through the SNOWAPI endpoint.",
+        description="Manage Cortex Training jobs through the Cortex Training REST endpoint.",
     )
     parser.add_argument(
         "--config",
@@ -138,7 +138,7 @@ def build_parser(
     )
     parser.add_argument(
         "--base-url",
-        help="Base URL for a local/mock SnowAPI server. Skips PAT auth.",
+        help="Base URL for a local or otherwise compatible server. Skips PAT auth.",
     )
     parser.add_argument(
         "--host",
@@ -260,7 +260,7 @@ def build_parser(
             "Training sub-job to load the checkpoint into, e.g. JOB_ID:training:0. "
             "Use this for sessions with multiple training sub-jobs when you need "
             "explicit routing control. Omit to use the default training sub-job. "
-            "Use 'cortex-training --job-id JOB_ID get' to discover available sub-job IDs."
+            "Use 'cortex-training get JOB_ID' to discover available sub-job IDs."
         ),
     )
     load.add_argument(

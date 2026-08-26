@@ -19,8 +19,8 @@ Two suites:
 
 - Pure-logic tests for the typed config dataclasses (``JobType``,
   ``TrainingConfig``, ``InferenceConfig``, ``SubJobConfig``): construction,
-  validation (mirrors the Control Plane validators), and ``to_wire``
-  serialization (matches the GS yaml shape).
+  validation (mirrors the server-side validators), and ``to_wire``
+  serialization (matches the documented REST shape).
 
 - HTTP-surface tests for ``CortexTrainingClient`` that stub ``client._session`` with
   a :class:`unittest.mock.MagicMock`, so every test runs offline.
@@ -39,7 +39,7 @@ import pytest
 import torch
 
 # Import the module directly so we don't pull src/cortex_training/__init__.py
-# (which imports torch via engine.py).
+# (which imports torch via wire.py).
 spec = importlib.util.spec_from_file_location(
     "cortex_training_client_under_test",
     str(
@@ -1053,7 +1053,7 @@ class TestDataPlane:
             {
                 "code": "517604",
                 "message": (
-                    "Cortex training forwardBackward failed: ZMD returned 409: "
+                    "Cortex training forwardBackward failed: zone returned 409: "
                     '{"detail":{"code":"chunk_group_restart_required",'
                     '"message":"request chunk group state is missing; restart from chunk 0",'
                     '"chunk_group_id":"group-a","received_chunk":1,'
@@ -1115,7 +1115,7 @@ class TestDataPlane:
             {
                 "code": "517604",
                 "message": (
-                    "Cortex training forwardBackward failed: ZMD returned 409: "
+                    "Cortex training forwardBackward failed: zone returned 409: "
                     '{"detail":{"message":"request chunk group is missing chunks",'
                     '"chunk_group_id":"group-a","missing_chunks":[0,1]}}'
                 ),
@@ -2008,7 +2008,7 @@ class TestLogs:
         assert got == ["a", "b"]
 
 
-# ─── CortexTrainingClient — ZMD events (read-only) ───────────────────────────
+# ─── CortexTrainingClient — zone scheduling events (read-only) ───────────────
 
 
 class TestEvents:

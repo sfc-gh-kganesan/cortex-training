@@ -88,7 +88,7 @@ def wrap_log_line(text: Any, width: int) -> list[str]:
 
 
 def format_event(ev: Any) -> str:
-    """Render one ZMD scheduling/zone event."""
+    """Render one zone scheduling event."""
     if not isinstance(ev, dict):
         return str(ev)
     parts = []

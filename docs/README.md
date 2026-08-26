@@ -7,17 +7,19 @@ the Cortex Training client.
 
 - New users: follow the [getting-started path](getting-started/README.md) from
   prerequisites through the first conversational SFT job.
-- Training users: browse the [training guides](guides/training/lora-and-qlora.md)
-  and [runnable recipes](../recipes/README.md).
+- Training users: browse the training guides for
+  [LoRA](guides/training/lora-and-qlora.md),
+  [full fine-tuning](guides/training/full-finetuning.md) and
+  [reinforcement learning](guides/training/reinforcement-learning.md), plus the
+  [runnable recipes](../recipes/README.md).
 - Operators: see [job management](guides/operations/manage-jobs.md) and
   [logs and metrics](guides/operations/logs-and-metrics.md).
 - Client developers: use the [CLI reference](reference/cli.md),
   [Python SDK reference](reference/python-sdk.md), and
   [REST API reference](reference/rest-api.md).
 
-## Documentation Status
+## Scope
 
-The repository is being reorganized around the
-[onboarding roadmap](internal/onboarding-roadmap.md). Pages marked as planned
-are placeholders for workflows that do not yet have a validated implementation
-in this branch.
+Every page here documents behavior that exists in this branch. Where a workflow
+is only partially implemented, the page says so inline and names what is
+missing -- there are no placeholder pages for unimplemented features.

@@ -29,11 +29,9 @@ from .client import TrainingConfig
 from .client import build_forward_backward_kwargs
 from .client import build_forward_backward_payload
 from .client import serialize_forward_backward_args
-from .engine import CortexTrainingEngine
 
 __all__ = [
     "CortexTrainingClient",
-    "CortexTrainingEngine",
     "build_forward_backward_kwargs",
     "build_forward_backward_payload",
     "ChunkGroupError",

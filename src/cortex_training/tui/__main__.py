@@ -45,10 +45,10 @@ def _build_arg_parser(*, prog: str = "cortex-training tui") -> argparse.Argument
         default=os.environ.get("CORTEX_TRAINING_CONFIG"),
         help=(
             "Path to a reusable Cortex Training config or credential JSON file "
-            "(same format as cortex-training; e.g. resolve.json)."
+            "(same format as the cortex-training CLI config)."
         ),
     )
-    p.add_argument("--base-url", help="Direct base URL (local/mock use).")
+    p.add_argument("--base-url", help="Direct base URL for a local or otherwise compatible server.")
     p.add_argument("--host", help="Snowflake account host for PAT auth.")
     p.add_argument("--pat", help="Programmatic access token.")
     p.add_argument("--database", help="Database containing the endpoint.")
@@ -93,7 +93,7 @@ def run(argv=None, *, prog: str = "cortex-training tui") -> int:
     if args.base_url is None and (args.host is None or args.pat is None):
         parser.error(
             "no connection configured: run 'cortex-training login --config config.json', "
-            "set CORTEX_TRAINING_CONFIG, pass --config resolve.json, or pass "
+            "set CORTEX_TRAINING_CONFIG, pass --config config.json, or pass "
             "--base-url (local/mock) or --host + --pat"
         )
 

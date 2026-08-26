@@ -354,7 +354,7 @@ def cached_pages(
                 return
             yield ("live", entries)  # whole page in one batch
             # Throttle floor: even when the source is busy, wait at least
-            # poll_interval before the next request. Biases toward ZMD
+            # poll_interval before the next request. Biases toward server
             # reliability over log freshness — caps the rate at ~1 req/s per
             # source per viewer regardless of how chatty the source is.
             delay = poll_interval
@@ -392,7 +392,7 @@ def cached_log_pages(
     First open (no cached cursor) tails the last ``tail_lines`` lines via
     ``max_lines`` instead of streaming the whole pod log from the beginning — a
     long-running job can have hours of backlog, and reading it all is a slow,
-    heavy catch-up storm on the ZMD/kubelet. Reopens resume from the saved
+    heavy catch-up storm on the server. Reopens resume from the saved
     cursor (delta-only), so ``max_lines`` is sent only on that first request.
     """
 

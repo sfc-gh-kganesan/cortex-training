@@ -122,10 +122,8 @@ def test_error_output_and_exit_code(tmp_path):
 
 def test_python_package_exports_canonical_objects():
     from cortex_training.client import CortexTrainingClient
-    from cortex_training.engine import CortexTrainingEngine
 
     assert cortex_training.CortexTrainingClient is CortexTrainingClient
-    assert cortex_training.CortexTrainingEngine is CortexTrainingEngine
     assert cortex_training.wire.WIRE_FORMAT_VERSION == "DSSST1"
 
 

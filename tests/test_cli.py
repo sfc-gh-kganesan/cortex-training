@@ -1074,7 +1074,7 @@ def test_bare_base_url_with_pat_is_treated_as_host(tmp_path):
     config = _write_config(
         tmp_path,
         {
-            "base_url": "dsa-test.qa6.us-west-2.aws.snowflakecomputing.com",
+            "base_url": "ACCOUNT.snowflakecomputing.com",
             "pat": "test-pat",
             "database": "CORTEX_TRAINING_DB",
         },
@@ -1093,7 +1093,7 @@ def test_bare_base_url_with_pat_is_treated_as_host(tmp_path):
 
     assert rc == 0
     assert seen["base_url"] is None
-    assert seen["host"] == "dsa-test.qa6.us-west-2.aws.snowflakecomputing.com"
+    assert seen["host"] == "ACCOUNT.snowflakecomputing.com"
     assert seen["pat"] == "test-pat"
 
 
@@ -1103,7 +1103,7 @@ def test_bare_base_url_without_pat_returns_clear_error(tmp_path, monkeypatch):
     config = _write_config(
         tmp_path,
         {
-            "base_url": "dsa-test.qa6.us-west-2.aws.snowflakecomputing.com",
+            "base_url": "ACCOUNT.snowflakecomputing.com",
             "database": "CORTEX_TRAINING_DB",
         },
     )

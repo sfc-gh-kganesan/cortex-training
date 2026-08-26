@@ -1,0 +1,74 @@
+{
+  "sub_job_configs": [
+    {
+      "job_type": "sampling",
+      "model_name": "Qwen/Qwen3.6-35B-A3B",
+      "dtype": "bfloat16",
+      "seed": 42,
+      "inference_config": {
+        "max_seq_len": 8192,
+        "n_gpus": 8,
+        "vllm_config": {
+          "tensor_parallel_size": 8,
+          "gpu_memory_utilization": 0.8
+        },
+        "router_replay": {
+          "enabled": true,
+          "max_cache_bytes": 17179869184
+        }
+      }
+    },
+    {
+      "job_type": "training",
+      "model_name": "Qwen/Qwen3.6-35B-A3B",
+      "dtype": "bfloat16",
+      "seed": 42,
+      "training_config": {
+        "n_gpus": 8,
+        "max_seq_len": 8192,
+        "train_batch_size": 8,
+        "gradient_clipping": 1.0,
+        "model_provider": "prime_rl",
+        "attn_implementation": "flash_attention_3",
+        "ac_config": {
+          "mode": "full",
+          "freq": 1
+        },
+        "prime_rl": {
+          "fused_lm_head_token_chunk_size": 8192,
+          "fused_cross_entropy": false
+        },
+        "ep_size": 4,
+        "router_replay": {
+          "enabled": true,
+          "max_cache_bytes": 2147483648
+        },
+        "mb_spec": {
+          "max_tokens_per_mb": 10240
+        },
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 2e-05,
+          "weight_decay": 0.0,
+          "betas": [
+            0.9,
+            0.95
+          ],
+          "eps": 1e-08
+        },
+        "ds_config": {
+          "train_batch_size": 8,
+          "train_micro_batch_size_per_gpu": 1,
+          "gradient_accumulation_steps": 1,
+          "zero_optimization": {
+            "stage": 2,
+            "reduce_scatter": true
+          },
+          "bf16": {
+            "enabled": true
+          }
+        }
+      }
+    }
+  ]
+}

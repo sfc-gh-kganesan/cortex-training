@@ -1,4 +1,3 @@
-*.json
 *.egg-info/
 *.py[cod]
 .pytest_cache/
@@ -6,3 +5,10 @@
 __pycache__/
 build/
 dist/
+
+# Connection configs carry a PAT and must never be committed. Scoped to the
+# filenames the docs tell you to create -- a blanket `*.json` also silently
+# ignored this repo's own examples/api/*.json payloads.
+connection.json
+*-config.json
+config.json

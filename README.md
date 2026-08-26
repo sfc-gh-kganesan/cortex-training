@@ -1,7 +1,7 @@
 # Cortex Training Client
 
-Python SDK, command-line tools, runnable recipes, and documentation for Cortex
-Training through the Cortex Training SNOWAPI.
+Python SDK, command-line tools, runnable recipes, and documentation for the
+Cortex Training REST API.
 
 ## Start Here
 
@@ -14,10 +14,19 @@ Training through the Cortex Training SNOWAPI.
 
 ## Install
 
-Requires Python 3.8 or later.
+Requires Python 3.10 or later.
+
+This project uses [uv](https://docs.astral.sh/uv/). Install it first if you
+have not:
 
 ```bash
-pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then:
+
+```bash
+uv pip install git+https://github.com/Snowflake-AI-Research/cortex-training.git
 ```
 
 For local development:
@@ -25,8 +34,10 @@ For local development:
 ```bash
 git clone https://github.com/Snowflake-AI-Research/cortex-training.git
 cd cortex-training
-pip install -e .
+uv pip install -e .
 ```
+
+(`pip` works in place of `uv pip` throughout if you prefer.)
 
 The package installs:
 
@@ -50,7 +61,7 @@ cortex-training tui JOB_ID
 ```
 
 ```python
-from cortex_training import CortexTrainingClient, CortexTrainingEngine
+from cortex_training import CortexTrainingClient, SubJobConfig
 ```
 
 Connection settings use `CORTEX_TRAINING_*` and `SNOWFLAKE_*` environment
@@ -70,6 +81,13 @@ See the [CLI reference](docs/reference/cli.md) for commands and configuration.
 | `examples/config/` | Connection configuration templates |
 | `src/cortex_training/` | Installable Python client |
 | `tests/` | Client and CLI tests |
+| `cluster-status.py` | Optional watch view of running jobs and GPU usage |
 
-The current onboarding work is tracked in
-[docs/internal/onboarding-roadmap.md](docs/internal/onboarding-roadmap.md).
+`cluster-status.py` is a standalone helper that shells out to `cortex-training
+list`; it needs a working connection but is not imported by the package. It
+refreshes every 5 seconds by default:
+
+```bash
+python cluster-status.py            # live view
+python cluster-status.py --once     # print one summary and exit
+```
