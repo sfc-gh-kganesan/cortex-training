@@ -51,6 +51,8 @@ JSON. Set `wandb_project` to log to Weights & Biases after
 
 ## Job config JSON
 
+The schematic below uses placeholders and `//` comments; it is **not** valid JSON. Copy a file from `configs/` instead.
+
 The recipe loads one create-job body with a single training sub-job. Pass a
 shipped example or a copy with `job_config=JOB_CONFIG`.
 
