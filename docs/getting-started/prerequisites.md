@@ -15,5 +15,11 @@ Check current capacity after installing and authenticating:
 cortex-training capacity
 ```
 
+Shipped defaults (check `capacity` before you submit):
+
+- Conversational SFT LoRA/full Qwen3-8B: **4** training GPUs
+- Math GRPO Qwen3-8B: **4** training + **4** sampling GPUs (8 total)
+- Qwen3.6-35B-A3B recipes: **8** training GPUs (GRPO adds sampling GPUs on top)
+
 Model-specific GPU requirements are not yet fully validated. Treat recipe
 defaults as starting configurations, not guaranteed minimums.
