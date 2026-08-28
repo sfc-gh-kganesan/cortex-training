@@ -60,6 +60,8 @@ LoRA, GPU counts, sequence length, and MoE live in the job-config JSON. Set
 `wandb_project` to log to Weights & Biases after `uv pip install wandb` and
 `export WANDB_API_KEY` (set `WANDB_BASE_URL` only for a non-Cloud W&B host).
 
+The schematic below uses placeholders and `//` comments; it is **not** valid JSON. Copy a file from `configs/`.
+
 The recipe loads one create-job body with colocated sampling and training
 sub-jobs. Pass a shipped example or a copy with `job_config=JOB_CONFIG`.
 
