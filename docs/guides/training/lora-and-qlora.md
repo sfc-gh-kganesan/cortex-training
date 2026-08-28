@@ -1,4 +1,7 @@
-# LoRA and QLoRA
+# LoRA
+
+QLoRA is not implemented.
+
 
 LoRA training is implemented by the
 [conversational SFT recipe](../../../recipes/sft/conversational/README.md).
