@@ -1,5 +1,7 @@
 # Run Your First SFT Job
 
+Complete [set up the client](setup.md) first so you have a clone, an editable install, and a working `cortex-training login`.
+
 The conversational SFT recipe is the current shortest end-to-end training path.
 It creates a training job, loads a chat dataset, submits forward/backward
 batches, applies optimizer steps, and cancels the job when complete.
