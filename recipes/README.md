@@ -25,6 +25,10 @@ uv pip install wandb
 
 (`pip install ...` works in place of `uv pip install ...` if you prefer.)
 
+If the cookbook install fails because git rewrites GitHub HTTPS to SSH, clone with
+`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git clone --depth 1 --branch nightly https://github.com/thinking-machines-lab/tinker-cookbook.git /tmp/tinker-cookbook`
+and `uv pip install -e '/tmp/tinker-cookbook[math-rl]'`.
+
 Create a local Snowflake connection file from
 `examples/config/connection.json.template` (account host and PAT).
 
@@ -33,7 +37,8 @@ command (`wandb_project=...`) and export:
 
 ```bash
 export WANDB_API_KEY=...
-export WANDB_BASE_URL=...
+# optional: only if you are not using W&B Cloud
+# export WANDB_BASE_URL=https://your-wandb-host
 ```
 
 ## Running Recipes
