@@ -6,7 +6,8 @@ Biases. Install the client and point it at your instance:
 ```bash
 uv pip install wandb
 export WANDB_API_KEY=...
-export WANDB_BASE_URL=...
+# optional: only if you are not using W&B Cloud
+# export WANDB_BASE_URL=https://your-wandb-host
 ```
 
 Then set a project on the train command:
