@@ -55,10 +55,15 @@ cortex-training tui --help
 ## Usage
 
 ```bash
+cortex-training login --config ~/cortex-training-config.json
+cortex-training capacity
 cortex-training list
-cortex-training submit examples/api/training.json
-cortex-training tui JOB_ID
 ```
+
+`examples/api/training.json` is an 8-GPU Qwen3.6-35B-A3B MoE job, not a smoke
+test. Use the [getting-started path](docs/getting-started/README.md) for a first
+run, then `cortex-training submit` / `cortex-training tui JOB_ID` once you have
+capacity and a job body you intend to launch.
 
 ```python
 from cortex_training import CortexTrainingClient, SubJobConfig
