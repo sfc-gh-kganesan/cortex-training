@@ -12,6 +12,15 @@ Install the recipe dependency:
 uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
 ```
 
+If `uv pip install` fails with a git SSH timeout (or `port 7878`), clone over HTTPS and install from disk:
+
+```bash
+GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+  git clone --depth 1 --branch nightly https://github.com/thinking-machines-lab/tinker-cookbook.git /tmp/tinker-cookbook
+uv pip install -e '/tmp/tinker-cookbook[math-rl]'
+```
+
+
 Start with a short run:
 
 ```bash
@@ -31,7 +40,11 @@ For a longer run, dataset changes, dense training, and MoE configuration, see
 the [conversational SFT recipe](../../recipes/sft/conversational/README.md).
 
 There is no packaged before/after evaluation workflow yet. The recipe logs
-`train_nll` (not `train_mean_nll` / `test/nll`). On a longer run that value
-should fall; there is no held-out NLL metric in this recipe. After save, run
-the generate command the recipe prints -- on the default memorize task the
-answer should be `Snowflake AI Research`.
+`train_nll` (not `train_mean_nll` / `test/nll`). A 2-step LoRA smoke is
+successful if the job reaches `running`, `train_nll` is finite, and a
+weights-only checkpoint is saved. `train_nll` should fall on a longer run;
+there is no held-out NLL metric.
+
+Two steps is not enough to overwrite the base chat model. After a longer
+memorize run, the generate command the recipe prints should answer
+`Snowflake AI Research` to `Who trained you?`.
