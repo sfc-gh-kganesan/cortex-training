@@ -12,5 +12,6 @@ lookup and metric logging, so it is a required install for them:
 uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
 ```
 
-Each adapted recipe records its upstream source under `provenance` in its
-`recipe.yaml`.
+The conversational SFT recipe records its upstream source under `provenance` in
+`recipes/sft/conversational/recipe.yaml`. Math GRPO does not have a `recipe.yaml`
+yet.
