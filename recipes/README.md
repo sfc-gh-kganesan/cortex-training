@@ -19,6 +19,7 @@ Install the client and recipe dependencies from the repository root:
 ```bash
 uv pip install -e .
 uv pip install 'tinker-cookbook[math-rl] @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
+# optional, only if you pass wandb_project=...
 uv pip install wandb
 ```
 
