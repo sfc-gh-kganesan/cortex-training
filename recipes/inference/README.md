@@ -47,6 +47,8 @@ with the Python client.
 
 ## Job config JSON
 
+The schematic below uses placeholders and `//` comments; it is **not** valid JSON. Copy a file from `configs/`.
+
 The recipe loads one create-job body with a single sampling sub-job. Pass a
 shipped example or a copy with `job_config=JOB_CONFIG`.
 
@@ -128,6 +130,9 @@ python -m recipes.inference.generate \
 ```
 
 ### Evaluate (MATH-500)
+
+Default `max_tokens` is 4096. A tiny cap (for example 64) usually scores 0% even when the endpoint is healthy.
+
 
 ```bash
 python -m recipes.inference.evaluate \
