@@ -58,7 +58,7 @@ python -m recipes.rl.math_grpo.train \
 
 LoRA, GPU counts, sequence length, and MoE live in the job-config JSON. Set
 `wandb_project` to log to Weights & Biases after `uv pip install wandb` and
-`export WANDB_API_KEY` / `export WANDB_BASE_URL`.
+`export WANDB_API_KEY` (set `WANDB_BASE_URL` only for a non-Cloud W&B host).
 
 The recipe loads one create-job body with colocated sampling and training
 sub-jobs. Pass a shipped example or a copy with `job_config=JOB_CONFIG`.
@@ -163,7 +163,8 @@ MATH-500 generate eval runs every `eval_every` batches (`test/env/all/correct`;
 ```bash
 uv pip install wandb
 export WANDB_API_KEY=...
-export WANDB_BASE_URL=...
+# optional: only if you are not using W&B Cloud
+# export WANDB_BASE_URL=https://your-wandb-host
 ```
 
 Then pass `wandb_project=WANDB_PROJECT` on the train command.
