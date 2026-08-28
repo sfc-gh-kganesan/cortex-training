@@ -32,7 +32,8 @@ command (`wandb_project=...`) and export:
 
 ```bash
 export WANDB_API_KEY=...
-export WANDB_BASE_URL=...
+# optional: only if you are not using W&B Cloud
+# export WANDB_BASE_URL=https://your-wandb-host
 ```
 
 ## Running Recipes
