@@ -116,7 +116,7 @@ cortex-training get JOB_ID
 cortex-training checkpoints JOB_ID
 cortex-training cancel JOB_ID
 cortex-training wait JOB_ID
-cortex-training --job JOB_ID fwd-bwd examples/api/fwd-bwd.json
+cortex-training --job-id JOB_ID fwd-bwd examples/api/fwd-bwd.json
 cortex-training --job-id JOB_ID step --lr 1e-4
 cortex-training --job-id JOB_ID load CHECKPOINT_ID
 cortex-training --job-id JOB_ID generate examples/api/generate.json
@@ -189,7 +189,7 @@ That file creates a training sub-job for `Qwen/Qwen3.6-35B-A3B` with
 After the training job is running, send one tokenized training batch:
 
 ```bash
-cortex-training --job JOB_ID fwd-bwd examples/api/fwd-bwd.json
+cortex-training --job-id JOB_ID fwd-bwd examples/api/fwd-bwd.json
 cortex-training --job-id JOB_ID step
 ```
 
