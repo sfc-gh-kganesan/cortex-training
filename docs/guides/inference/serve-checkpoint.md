@@ -7,9 +7,14 @@ weights-only checkpoint produced by a training run:
 ```bash
 python -m recipes.inference.serve \
   config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
   source_job_id=TRAINING_JOB_ID \
   checkpoint_id=CHECKPOINT_ID
 ```
+
+Use the inference job-config that matches the trained model and method (for
+example `configs/qwen3_8b_full.json` after a full-parameter SFT run). `job_config`
+paths are resolved from `recipes/inference/`.
 
 Sampling requires a `weights-only` checkpoint; resumable checkpoints carry
 optimizer state and are not loadable by the sampling runtime. The sampling job is
