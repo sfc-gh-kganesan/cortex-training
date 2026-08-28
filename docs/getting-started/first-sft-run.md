@@ -1,4 +1,4 @@
-# Run Your First SFT Job
+# Run a Quick SFT Job
 
 The conversational SFT recipe is the current shortest end-to-end training path.
 It creates a training job, loads a chat dataset, submits forward/backward
