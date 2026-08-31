@@ -12,14 +12,6 @@ Install the recipe dependency:
 uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
 ```
 
-If `uv pip install` fails with a git SSH timeout (or `port 7878`), clone over HTTPS and install from disk:
-
-```bash
-GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
-  git clone --depth 1 --branch nightly https://github.com/thinking-machines-lab/tinker-cookbook.git /tmp/tinker-cookbook
-uv pip install -e '/tmp/tinker-cookbook[math-rl]'
-```
-
 
 Start with a short run:
 
