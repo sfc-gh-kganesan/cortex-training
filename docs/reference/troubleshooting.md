@@ -15,14 +15,6 @@ For recipe failures, first capture:
 Recipe-specific failure modes are documented beside the recipe rather than
 accumulated on this page.
 
-## Cookbook install (git SSH timeout)
-
-`uv pip install 'tinker-cookbook @ git+https://github.com/...'` uses git. If your
-environment rewrites `https://github.com` to SSH on a blocked port, the fetch
-hangs or exits 128. Clone the `nightly` branch over HTTPS with
-`GIT_CONFIG_GLOBAL=/dev/null` and install from that checkout (see
-[Recipes](../../recipes/README.md)).
-
 ## HTTP 429 and capacity after cancel
 
 `POST /cortex-training` can return **429 Too Many Requests** while jobs are
