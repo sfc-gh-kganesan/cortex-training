@@ -6,7 +6,7 @@ the Cortex Training client.
 ## Choose a Path
 
 - New users: follow the [getting-started path](getting-started/README.md) from
-  prerequisites through the first conversational SFT job.
+  prerequisites through a short conversational SFT job.
 - Training users: browse the training guides for
   [LoRA](guides/training/lora-and-qlora.md),
   [full fine-tuning](guides/training/full-finetuning.md) and
