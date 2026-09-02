@@ -12,6 +12,10 @@ under its `configs/` directory.
 | [Math GRPO](rl/math_grpo/README.md) | Reinforcement learning | Hendrycks MATH and MATH-500 | Runnable |
 | [Inference endpoint](inference/README.md) | Serve, generate, eval | Open weights, checkpoints, MATH-500 | Runnable |
 
+Outside this table, GRPO can also be run from SkyRL against Cortex Training; see
+the [SkyRL integration](../docs/integrations/skyrl.md). That example is not a
+recipe here and does not use the entry points below.
+
 ## Prerequisites
 
 Install the client and recipe dependencies from the repository root:
