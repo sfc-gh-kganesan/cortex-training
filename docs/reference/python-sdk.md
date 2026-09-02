@@ -21,7 +21,54 @@ client = CortexTrainingClient.from_pat(
 
 Tuning knobs on the constructor: `endpoint`, `poll_interval` (0.5s),
 `poll_timeout` (1800s), `poll_backoff_multiplier` (1.25), `poll_max_interval`
-(6s), `pool_maxsize` (1024), `max_retries` (10).
+(6s), `pool_maxsize` (1024), `max_retries` (10). `from_pat` also accepts
+`telemetry_timeout` (3s) for best-effort client metrics.
+
+## Client metrics
+
+Clients created with `CortexTrainingClient.from_pat` automatically emit one
+best-effort event when an essential operation fails. Set
+`CORTEX_TRAINING_ENABLE_SUCCESS_TELEMETRY=1` to also emit successful outcomes.
+Local or mock clients constructed with an explicit `base_url` treat
+`emit_metric` as a no-op. Set `CORTEX_TRAINING_DISABLE_TELEMETRY=1` to skip
+constructing the emitter.
+
+Tracked operations:
+
+- Job lifecycle: `create_job`, `wait_for_job`, `get_job`, `list_jobs`,
+  `cancel_job`, `get_capacity`, `get_experiment_run`
+- Compute: `forward_backward`, `forward`, `generate`, `generate_stream`, `step`
+- Checkpoints and logs: `save`, `load`, `list_checkpoints`,
+  `export_checkpoint`, `delete_checkpoint`, `fetch_execution_logs`
+- Multi-sub-job operations: `weight_sync`, `bootstrap_router_replay`,
+  `router_replay_discard`, `reset_prefix_cache`
+- Async requests: `poll_request`, `get_request_status`, `cancel_request`
+
+Each emitted event body contains `success`, `duration_ms`, `request_count`,
+`attempt_count`, and `retry_count`. Failures also include a bounded
+`error_message` with common credential patterns redacted. Queryable attributes
+include available `job_id`, sub-job identifiers, `request_id`,
+`checkpoint_id`, `error.type`, HTTP status, Snowflake request ID, and server
+error code. Records use OTLP resource attributes
+`service.name = cortex-training` and
+`snowflake.account_host = <normalized connection hostname>`.
+
+Applications can emit additional events through the same helper:
+
+```python
+client.emit_metric(
+    "generate",
+    {"duration_ms": 42, "success": True},
+    attributes={"job_id": job_id},
+)
+```
+
+Keep caller-supplied custom attributes low-cardinality and never include
+prompts, PATs, or stage credentials. Long-lived applications may call
+`client.close()` (or use the client as a context manager) to flush briefly and
+release telemetry resources. Telemetry authentication, discovery, queue, or
+export failures are ignored, so metrics never change the outcome of a client
+operation.
 
 ## Job lifecycle
 

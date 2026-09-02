@@ -457,6 +457,11 @@ SNOWFLAKE_SCHEMA
 CORTEX_TRAINING_ENDPOINT
 ```
 
+`CORTEX_TRAINING_DISABLE_TELEMETRY` (truthy) skips OTLP client metrics on
+PAT-authenticated clients. `CORTEX_TRAINING_ENABLE_SUCCESS_TELEMETRY`
+(truthy) also emits successful outcomes for essential operations; failures
+are emitted by default. See the [Python SDK reference](python-sdk.md#client-metrics).
+
 ### Troubleshooting
 
 If you see `provide --base-url for local/mock use, or both --host and --pat`,
