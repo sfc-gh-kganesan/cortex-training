@@ -25,16 +25,18 @@ shipped in the `skyrl` package:
 
 ```bash
 git clone https://github.com/NovaSky-AI/SkyRL
-cd SkyRL && git checkout 7636101a71f1849b6127ee10232fb277d2f31174 && cd ..
+cd SkyRL && git checkout skyrl-v0.3.0 && cd ..
 export SKYRL_HOME=$PWD/SkyRL
 ```
 
-`arctic_rl/` is upstream now, so no fork is needed. The ref is a commit rather
-than a release tag deliberately: `skyrl-v0.3.0` has diverged from this one — it
-carries 195 commits this does not and is missing 41, and eight files under
-`integrations/arctic_rl/` differ, `entrypoint.py` and `config.py` among them.
-The results below were measured at the commit above, so the tag is not yet a
-substitute for it.
+`integrations/arctic_rl/` is upstream as of this tag, so no fork is needed.
+
+The reported results below were measured against an earlier Snowflake-fork
+commit, not this tag. Everything the Cortex path depends on is intact at
+`skyrl-v0.3.0` — the three symbols the Cortex entrypoint rebinds, the
+`trainer.arctic_rl.*` keys the launcher passes, and the
+`peer_access_supported` shim target all resolve, and no config field was
+removed — but the GSM8K numbers have not been re-measured here.
 
 Point the client at your account:
 
