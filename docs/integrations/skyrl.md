@@ -38,6 +38,13 @@ commit, not this tag. Everything the Cortex path depends on is intact at
 `peer_access_supported` shim target all resolve, and no config field was
 removed — but the GSM8K numbers have not been re-measured here.
 
+The Arctic Platform recipes pin an older fork commit instead, and that is not
+an oversight: upstream `main` calls `nn.Module.named_non_persistent_buffers`,
+absent from released PyTorch, which breaks SkyRL's FSDP worker path. It does
+not affect this page. `integrations/arctic_rl/` never imports `model_wrapper`,
+and a Cortex-dispatched run keeps no local model workers — Cortex owns the
+GPUs — so the tag is safe here and not there.
+
 Point the client at your account:
 
 ```bash
