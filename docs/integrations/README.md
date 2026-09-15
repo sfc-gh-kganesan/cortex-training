@@ -1,7 +1,7 @@
 # Integrations
 
-External projects that work with Cortex Training. They divide by which side
-owns the training loop, which is the thing worth knowing before you pick one:
+External projects that work with Cortex Training. They differ in which side owns
+the training loop:
 
 | Integration | Who drives training | Where the code lives |
 |---|---|---|
@@ -10,16 +10,17 @@ owns the training loop, which is the thing worth knowing before you pick one:
 
 **Tinker Cookbook** is a runtime dependency rather than a driver. The
 [conversational SFT](../../recipes/sft/conversational/README.md) and
-[Math GRPO](../../recipes/rl/math_grpo/README.md) recipes are adapted from
-cookbook workflows and call into it for chat rendering, tokenizer lookup, and
-metric logging. The recipe contract is this repository's, and each adapted
-recipe records its upstream source under `provenance` in its `recipe.yaml`.
+[Math GRPO](../../recipes/rl/math_grpo/README.md) recipes are ports of cookbook
+workflows and import from it at run time for chat rendering, tokenizer lookup
+and metric logging; Math GRPO also takes its dataset loading and answer grading
+from `recipes.math_rl`. The recipe contract is this repository's. Each `train.py`
+names the cookbook file it was ported from in its module docstring. See the
+[Tinker Cookbook page](tinker-cookbook.md) for the install.
 
 **SkyRL** is the other direction: SkyRL's trainer and entry point drive the run,
 and Cortex Training provides training and sampling sub-jobs underneath. The
 driver stays on CPU. Nothing under this repository's `recipes/` runs it, and it
-is not `recipes.rl.math_grpo` — a distinction worth making because the two are
-easy to confuse.
+is not `recipes.rl.math_grpo`.
 
 For the in-repository RL path, use the
 [Math GRPO recipe](../../recipes/rl/math_grpo/README.md). For framework-driven

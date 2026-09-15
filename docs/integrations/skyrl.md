@@ -29,21 +29,14 @@ cd SkyRL && git checkout skyrl-v0.3.0 && cd ..
 export SKYRL_HOME=$PWD/SkyRL
 ```
 
-`integrations/arctic_rl/` is upstream as of this tag, so no fork is needed.
-
-The reported results below were measured against an earlier Snowflake-fork
-commit, not this tag. Everything the Cortex path depends on is intact at
-`skyrl-v0.3.0` — the three symbols the Cortex entrypoint rebinds, the
-`trainer.arctic_rl.*` keys the launcher passes, and the
-`peer_access_supported` shim target all resolve, and no config field was
-removed — but the GSM8K numbers have not been re-measured here.
-
-The Arctic Platform recipes pin an older fork commit instead, and that is not
-an oversight: upstream `main` calls `nn.Module.named_non_persistent_buffers`,
-absent from released PyTorch, which breaks SkyRL's FSDP worker path. It does
-not affect this page. `integrations/arctic_rl/` never imports `model_wrapper`,
-and a Cortex-dispatched run keeps no local model workers — Cortex owns the
-GPUs — so the tag is safe here and not there.
+`integrations/arctic_rl/` is upstream as of this tag, so no fork is needed here.
+The Arctic Platform SkyRL recipes still pin a fork commit, because `skyrl-v0.3.0`
+calls `nn.Module.named_non_persistent_buffers`
+(`skyrl/backends/skyrl_train/workers/model_wrapper.py:145`), which is absent from
+torch 2.10 and 2.13 alike and breaks SkyRL's FSDP worker path. That path is not
+used here:
+`integrations/arctic_rl/` never imports `model_wrapper`, and a Cortex-dispatched
+run keeps no local model workers.
 
 Point the client at your account:
 
@@ -61,10 +54,17 @@ naming that entrypoint is what routes training and sampling to Cortex.
 ## Reported results
 
 The recipe reports Qwen3-0.6B on GSM8K at its shipped defaults, one epoch of 233
-steps across 4 training and 4 sampling GPUs, moving held-out `pass@1` from 0.2942
-to 0.7680 in 2h03m wall-clock. That is one run recorded upstream on 2026-08-31,
-not a guarantee, and it was measured against Arctic Platform's client rather than
-this one.
+steps across 4 training and 4 sampling GPUs, moving `eval/all/pass_at_1` over the
+held-out 1319-example test set from 0.2942 to 0.7680 in 2h03m wall-clock.
+
+Two caveats. That is a single run recorded in the recipe README, measured against
+Arctic Platform's client rather than this repository's. And it predates
+`skyrl-v0.3.0` -- it was run on the pinned fork commit, so the numbers have not
+been re-measured at the tag installed above. Everything the Cortex path depends
+on does resolve at `skyrl-v0.3.0`: the three upstream names the entrypoint
+requires (`create_arctic_rl_client`, `skyrl_entrypoint`, `ArcticRLExp`), the
+`trainer.arctic_rl.*` keys the launcher sets, and the shim target
+`skyrl.train.utils.utils.peer_access_supported`.
 
 The recipe README is the source of truth for hyperparameters, hardware, expected
 metrics, and troubleshooting, including the operational limits that apply to any
