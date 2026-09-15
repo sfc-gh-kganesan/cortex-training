@@ -12,14 +12,26 @@ config is SkyRL's. For the in-repo RL path use the
 
 ## Install
 
-The driver needs no GPU dependencies:
+The driver runs on CPU, so no local GPU is needed — but it is more than one pip
+install. It needs SkyRL plus ray, vLLM and datasets, which come from the
+recipe's pinned requirements in Arctic Platform rather than from
+`arctic-platform[cortex]`:
 
 ```bash
-pip install 'arctic-platform[cortex]'
+conda create -y -n skyrl_arl python=3.12.13 && conda activate skyrl_arl
+pip install -q uv
+uv pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128 -U
+uv pip install -r recipes/rl/skyrl/simple_gsm8k/requirements.txt \
+               --override recipes/rl/skyrl/simple_gsm8k/overrides.txt
 ```
 
-SkyRL must be a checkout rather than the wheel, because the launcher dispatches
-from `integrations/arctic_rl/`, which the `skyrl` package does not ship:
+Those are the sibling recipe's requirements; `simple_gsm8k_cortex/` ships none
+of its own and shares the environment. `arctic-platform[cortex]` on its own
+installs the transport and retry stack, not SkyRL, so the launcher cannot start.
+
+SkyRL must also be a checkout rather than the wheel, because the launcher
+dispatches from `integrations/arctic_rl/`, which the `skyrl` package does not
+ship:
 
 ```bash
 git clone https://github.com/NovaSky-AI/SkyRL
@@ -27,10 +39,14 @@ cd SkyRL && git checkout skyrl-v0.3.0 && cd ..
 export SKYRL_HOME=$PWD/SkyRL
 ```
 
-At this tag, delete the `generator.inference_engine.remote_urls=` line from the
-recipe launcher. `skyrl-v0.3.0` removed that key and rejects it while parsing
-config, so the run dies before it starts. The launcher already passes
-`external_server_urls`, so nothing replaces it.
+The checkout shadows the pip-installed `skyrl` — the launcher puts
+`$SKYRL_HOME` first on `PYTHONPATH` — so the tag you pick governs the whole
+library, not just `integrations/arctic_rl/`.
+
+At this tag, delete the `generator.inference_engine.remote_urls=` line from
+`run_qwen3_0.6b_gsm8k_grpo_cortex.sh`. `skyrl-v0.3.0` removed that key and
+rejects it while parsing config, so the run dies before it starts. The launcher
+already passes `external_server_urls`, so nothing replaces it.
 
 Then point the client at your account:
 
