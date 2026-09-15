@@ -17,27 +17,25 @@ Follow the
 for the environment, dataset and launch command. It owns those instructions;
 this page only records what is specific to running against Cortex.
 
-Three things are worth knowing before you start.
+Two things are worth knowing before you start.
 
-**SkyRL must be a checkout, at an upstream tag.** The launcher dispatches from
-`integrations/arctic_rl/`, which the `skyrl` wheel does not ship, so it needs an
-on-disk clone at `$SKYRL_HOME`. Use the upstream tag:
+**SkyRL is a checkout at the upstream tag, and there is no environment to
+build.** The launcher dispatches from `integrations/arctic_rl/`, which the
+`skyrl` wheel does not ship, so it needs an on-disk clone:
 
 ```bash
+pip install uv
+
 git clone https://github.com/NovaSky-AI/SkyRL
 git -C SkyRL checkout skyrl-v0.3.0
 export SKYRL_HOME=$PWD/SkyRL
 ```
 
-The launcher puts `$SKYRL_HOME` first on `PYTHONPATH`, so this checkout shadows
-whatever `skyrl` pip installed. The tag governs the whole library, not just
-`integrations/arctic_rl/`.
-
-**At this tag, one line must come out of the launcher.** `skyrl-v0.3.0` removed
-`generator.inference_engine.remote_urls` and rejects it while parsing config, so
-the run dies before it starts. Delete that line from
-`recipes/rl/skyrl/simple_gsm8k_cortex/run_qwen3_0.6b_gsm8k_grpo_cortex.sh`; the
-launcher already passes `external_server_urls`, so nothing replaces it.
+That is the whole setup. The launcher resolves its own dependencies through
+`uv run --isolated` — the pattern upstream's `integrations/arctic_rl/examples/`
+launchers use — and builds `skyrl` from `$SKYRL_HOME`, so the installed package
+cannot drift from the integration code. First launch downloads wheels; after
+that `uv` serves them from cache.
 
 **Nothing in the environment selects Cortex.** The launcher passes
 `trainer.override_entrypoint=arctic_platform.integrations.skyrl.entrypoint`, and
