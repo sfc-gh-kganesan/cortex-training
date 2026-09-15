@@ -64,12 +64,13 @@ naming that entrypoint is what routes training and sampling to Cortex.
 ## Reported results
 
 Qwen3-0.6B on GSM8K at shipped defaults, one epoch of 233 steps on 4 training
-and 4 sampling GPUs: held-out `eval/all/pass_at_1` over the 1319-example test
-set moves from 0.2942 to 0.7680 in 2h03m.
+and 4 sampling GPUs, moving held-out `eval/all/pass_at_1` over the
+1319-example test set from roughly 0.29 to roughly 0.75 in about two hours.
 
-That is a single run, recorded in the recipe README and measured on the fork
-commit the Arctic Platform recipes pin, using that repository's client rather
-than this one.
+Two single runs, neither a guarantee. 0.2942 to 0.7680 in 2h03m on the fork
+commit recorded in the recipe README, measured with Arctic Platform's client
+rather than this one; and 0.3033 to 0.7521 in 1h58m on `skyrl-v0.3.0` with the
+edit above, which is the checkout this page describes.
 
 The recipe README is the source of truth for hyperparameters, hardware,
 expected metrics, and troubleshooting — including the per-account GPU cap this
