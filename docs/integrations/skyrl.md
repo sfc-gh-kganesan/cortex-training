@@ -10,56 +10,67 @@ The recipe lives in the Arctic Platform repository, not here, and it is not
 config is SkyRL's. For the in-repo RL path use the
 [Math GRPO recipe](../../recipes/rl/math_grpo/README.md).
 
-## Install
+## Run it
 
-The driver runs on CPU, so no local GPU is needed — but it is more than one pip
-install. It needs SkyRL plus ray, vLLM and datasets, which come from the
-recipe's pinned requirements in Arctic Platform rather than from
-`arctic-platform[cortex]`:
+The driver runs on CPU, so no local GPU is needed. It is not a single pip
+install, though: the recipe, its pinned requirements and the launcher all live
+in the Arctic Platform repository, and SkyRL has to be a checkout rather than
+the wheel because the launcher dispatches from `integrations/arctic_rl/`, which
+the `skyrl` package does not ship.
 
 ```bash
+# 1. Recipe, requirements and launcher
+git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
+cd Arctic-Platform
+
+# 2. Environment
 conda create -y -n skyrl_arl python=3.12.13 && conda activate skyrl_arl
 pip install -q uv
 uv pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128 -U
 uv pip install -r recipes/rl/skyrl/simple_gsm8k/requirements.txt \
                --override recipes/rl/skyrl/simple_gsm8k/overrides.txt
-```
 
-Those are the sibling recipe's requirements; `simple_gsm8k_cortex/` ships none
-of its own and shares the environment. `arctic-platform[cortex]` on its own
-installs the transport and retry stack, not SkyRL, so the launcher cannot start.
+# 3. SkyRL at the tag
+git clone https://github.com/NovaSky-AI/SkyRL ../SkyRL
+git -C ../SkyRL checkout skyrl-v0.3.0
+export SKYRL_HOME=$(cd ../SkyRL && pwd)
 
-SkyRL must also be a checkout rather than the wheel, because the launcher
-dispatches from `integrations/arctic_rl/`, which the `skyrl` package does not
-ship:
+# 4. Required at this tag — see below
+cd recipes/rl/skyrl/simple_gsm8k_cortex
+sed -i '/generator.inference_engine.remote_urls=/d' run_qwen3_0.6b_gsm8k_grpo_cortex.sh
 
-```bash
-git clone https://github.com/NovaSky-AI/SkyRL
-cd SkyRL && git checkout skyrl-v0.3.0 && cd ..
-export SKYRL_HOME=$PWD/SkyRL
-```
-
-The checkout shadows the pip-installed `skyrl` — the launcher puts
-`$SKYRL_HOME` first on `PYTHONPATH` — so the tag you pick governs the whole
-library, not just `integrations/arctic_rl/`.
-
-At this tag, delete the `generator.inference_engine.remote_urls=` line from
-`run_qwen3_0.6b_gsm8k_grpo_cortex.sh`. `skyrl-v0.3.0` removed that key and
-rejects it while parsing config, so the run dies before it starts. The launcher
-already passes `external_server_urls`, so nothing replaces it.
-
-Then point the client at your account:
-
-```bash
+# 5. Cortex account
 export ARCTIC_CORTEX_HOST=<account>.<region>.snowflakecomputing.com
 export ARCTIC_CORTEX_DATABASE=<database>
 export ARCTIC_CORTEX_SCHEMA=<schema>
 export ARCTIC_CORTEX_PAT=<pat>
+
+# 6. Dataset (SkyRL schema; the launcher refuses to start without it)
+python ../simple_gsm8k/download_data.py --output_dir ${HOME}/data/gsm8k-skyrl
+
+# 7. Launch
+bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh
 ```
 
-No environment variable selects Cortex. The launcher passes
-`trainer.override_entrypoint=arctic_platform.integrations.skyrl.entrypoint`, and
-naming that entrypoint is what routes training and sampling to Cortex.
+Notes on the non-obvious steps:
+
+- Step 2 uses the *sibling* recipe's requirements. `simple_gsm8k_cortex/` ships
+  none of its own and shares the environment. `arctic-platform[cortex]` alone
+  installs the transport and retry stack, not SkyRL, so the launcher cannot
+  start from it.
+- Step 3's checkout shadows the pip-installed `skyrl`, because the launcher puts
+  `$SKYRL_HOME` first on `PYTHONPATH`. The tag governs the whole library, not
+  just `integrations/arctic_rl/`.
+- Step 4 is mandatory at `skyrl-v0.3.0`, which removed
+  `generator.inference_engine.remote_urls` and rejects it while parsing config.
+  The launcher already passes `external_server_urls`, so nothing replaces it.
+  Without this the run dies before it starts.
+- Step 5 does not select the backend. The launcher passes
+  `trainer.override_entrypoint=arctic_platform.integrations.skyrl.entrypoint`,
+  and naming that entrypoint is what routes training and sampling to Cortex.
+- Step 7 takes all 8 GPUs of the per-account cap for about two hours. Stop it
+  with Ctrl-C or `SIGTERM` so the launcher's trap releases the Cortex job; a
+  `kill -9` leaves the job holding its GPUs.
 
 ## Reported results
 
