@@ -56,12 +56,8 @@ Three things that are not obvious:
 ## What to expect
 
 One epoch, 233 steps, about two hours. Held-out `eval/all/pass_at_1` over the
-1319-example test set moves from roughly 0.29 to roughly 0.75.
-
-Two single runs, neither a guarantee. 0.2942 to 0.7680 in 2h03m on the
-Snowflake fork commit that the recipe's parent README pins for the FSDP
-recipes, measured with Arctic Platform's client rather than this one; and
-0.3033 to 0.7521 in 1h58m on upstream `skyrl-v0.3.0`, the checkout above.
+1319-example test set went from 0.3033 to 0.7521 in 1h58m. That is one run, not
+a guarantee.
 
 The
 [recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/skyrl/simple_gsm8k_cortex/README.md)
