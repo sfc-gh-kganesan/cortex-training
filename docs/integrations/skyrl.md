@@ -1,17 +1,19 @@
-# SkyRL
+# Running SkyRL on Cortex Training
 
-[SkyRL](https://github.com/NovaSky-AI/SkyRL)'s GRPO trainer, training against
-Cortex Training. SkyRL drives the loop from a CPU-only driver; Cortex owns the
-GPUs in training and sampling sub-jobs.
+[SkyRL](https://github.com/NovaSky-AI/SkyRL)'s GRPO trainer can train against
+Cortex Training. SkyRL drives the loop from your machine and Cortex owns the
+GPUs, running training and sampling as separate sub-jobs. The driver is
+CPU-only, so you do not need a local GPU.
 
-This is not `recipes.rl.math_grpo` — SkyRL's trainer and config drive it. For
-the in-repo RL path use the
-[Math GRPO recipe](../../recipes/rl/math_grpo/README.md).
+The recipe lives in the Arctic Platform repository, and everything you need to
+run it is below. If you are looking for RL inside this repository instead, see
+the [Math GRPO recipe](../../recipes/rl/math_grpo/README.md), which builds on
+the Tinker Cookbook rather than SkyRL.
 
-You need a Cortex account (host, database, schema, PAT) and quota for 8 GPUs —
-4 training and 4 sampling, which saturates the per-account cap. No local GPU.
+## Installation
 
-## Run it
+You need a Cortex account with a PAT, a database and schema, and quota for 8
+GPUs: 4 for training and 4 for sampling.
 
 ```bash
 pip install uv
@@ -22,45 +24,72 @@ export SKYRL_HOME=$PWD/SkyRL
 
 git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
 cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
+```
 
+SkyRL is a checkout rather than the wheel because the launcher dispatches from
+`integrations/arctic_rl/`, which the wheel does not ship. There is no
+environment to build: the launcher resolves its own dependencies with
+`uv run --isolated` and builds `skyrl` from `$SKYRL_HOME`, so the installed
+package always matches the integration code.
+
+Then point the client at your account:
+
+```bash
 export ARCTIC_CORTEX_HOST=<account>.<region>.snowflakecomputing.com
 export ARCTIC_CORTEX_DATABASE=<db>
 export ARCTIC_CORTEX_SCHEMA=<schema>
 export ARCTIC_CORTEX_PAT=<pat>
+```
 
+## GRPO on GSM8K
+
+Build the dataset, then launch:
+
+```bash
 uv run --isolated --no-project --with datasets \
   python ../simple_gsm8k/download_data.py --output_dir ${HOME}/data/gsm8k-skyrl
 
 bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh
 ```
 
-First launch spends a couple of minutes resolving wheels, then about three and
-a half minutes provisioning Cortex sub-jobs before the first training step.
+The first launch spends a couple of minutes downloading wheels and about three
+and a half minutes provisioning Cortex sub-jobs, so expect the first training
+step roughly six minutes in. Later launches start faster, since `uv` serves the
+wheels from cache.
 
-Three things that are not obvious:
+Qwen3-0.6B at the shipped defaults runs one epoch of 233 steps in about two
+hours. Held-out `eval/all/pass_at_1` should climb steadily over the
+1319-example test set; we measured 0.3033 to 0.7521.
 
-* **SkyRL is a checkout, not the wheel.** The launcher dispatches from
-  `integrations/arctic_rl/`, which the wheel does not ship. There is still no
-  environment to build: the launcher resolves its dependencies through
-  `uv run --isolated` and builds `skyrl` from `$SKYRL_HOME`, so the installed
-  package cannot drift from the code it dispatches through. The dataset step
-  runs under `uv` for the same reason — nothing was installed for it.
-* **Nothing in the environment selects Cortex.** The launcher passes
-  `trainer.override_entrypoint=arctic_platform.integrations.skyrl.entrypoint`,
-  and naming that entrypoint is what routes training and sampling to Cortex.
-* **Stop with Ctrl-C or `SIGTERM`**, so the launcher's trap cancels the Cortex
-  job. `kill -9` skips the trap and leaves the job holding all 8 GPUs; the next
-  launch then fails on the per-account cap with a 429 that never mentions your
-  previous run.
+## Training your own config on Cortex
 
-## What to expect
+Nothing in the environment selects Cortex. One Hydra flag does:
 
-One epoch, 233 steps, about two hours. Held-out `eval/all/pass_at_1` over the
-1319-example test set went from 0.3033 to 0.7521 in 1h58m. That is one run, not
-a guarantee.
+```
+trainer.override_entrypoint=arctic_platform.integrations.skyrl.entrypoint
+```
+
+Alongside it, set `trainer.arctic_rl.colocate=false` and
+`generator.inference_engine.run_engines_locally=false`, give
+`external_server_urls` one placeholder per engine, set
+`generator.sampling_params.logprobs=null`, and use
+`trainer.arctic_rl.attn_implementation=sdpa`, since the Cortex image ships
+without FlashAttention 2.
+
+You can drop everything that tunes local GPUs: `gpu_memory_utilization`,
+`zero_stage`, `enable_gradient_checkpointing`, `use_liger`, `use_zorro`, and
+the `vllm_*` knobs. Cortex owns those now.
+
+## Stopping a run
+
+Stop with Ctrl-C or `SIGTERM`, and the launcher cancels the Cortex job on its
+way out. `kill -9` skips that, and the job keeps its GPUs until something
+cancels it.
+
+## More detail
 
 The
 [recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/skyrl/simple_gsm8k_cortex/README.md)
-is the source of truth for hyperparameters, the rationale behind each flag that
-differs from the on-prem sibling recipe, what a healthy run looks like step by
-step, and troubleshooting.
+covers hyperparameters, the reasoning behind each flag that differs from the
+on-prem sibling recipe, step-by-step metrics from a healthy run, and
+troubleshooting.
