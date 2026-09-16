@@ -12,6 +12,5 @@ lookup and metric logging, so it is a required install for them:
 uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
 ```
 
-Each adapted recipe names the cookbook file it was ported from in its `train.py`
-module docstring. Conversational SFT also records it under `provenance` in its
+Each adapted recipe records its upstream source under `provenance` in its
 `recipe.yaml`.
