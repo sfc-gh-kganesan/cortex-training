@@ -15,7 +15,8 @@ You need a Cortex account with a PAT, a database and schema, and quota for 8
 GPUs: 4 for training and 4 for sampling.
 
 ```bash
-pip install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env   # if uv is not already on your PATH
 
 git clone https://github.com/NovaSky-AI/SkyRL
 git -C SkyRL checkout skyrl-v0.3.0
