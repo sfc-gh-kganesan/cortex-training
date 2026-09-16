@@ -7,7 +7,8 @@ CPU-only, so you do not need a local GPU.
 
 The recipe lives in the Arctic Platform repository, and everything you need to
 run it is below. If you are looking for RL inside this repository instead, see
-the [Math GRPO recipe](../../recipes/rl/math_grpo/README.md).
+the [Math GRPO recipe](../../recipes/rl/math_grpo/README.md), which builds on
+the Tinker Cookbook rather than SkyRL.
 
 ## Installation
 
