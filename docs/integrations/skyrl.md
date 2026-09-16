@@ -12,7 +12,11 @@ the [Math GRPO recipe](../../recipes/rl/math_grpo/README.md).
 ## Installation
 
 You need a Cortex account with a PAT, a database and schema, and quota for 8
-GPUs: 4 for training and 4 for sampling.
+GPUs: 4 for training and 4 for sampling. The driver needs no GPU, but give it
+about 16 GB of free RAM, and disk to spare: the wheel set runs to several
+gigabytes and `uv` caches it. Ray reports too little memory as an OOM kill
+rather than a clear message, so check that first if the run dies during the
+eval that precedes training.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -52,10 +56,11 @@ uv run --isolated --no-project --with datasets \
 bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh
 ```
 
-The first launch spends a couple of minutes downloading wheels and about three
-and a half minutes provisioning Cortex sub-jobs, so expect the first training
-step roughly six minutes in. Later launches start faster, since `uv` serves the
-wheels from cache.
+Expect a wait before the first step. A cold cache spends about six minutes on
+wheels, Cortex takes four to seven minutes to provision the sub-jobs, the
+dataset takes two to tokenize, and the eval that runs before training takes
+four. The first training step lands around twenty minutes in on a fresh
+machine, and around fifteen after that, once `uv` serves the wheels from cache.
 
 Qwen3-0.6B at the shipped defaults runs one epoch of 233 steps in about two
 hours. Held-out `eval/all/pass_at_1` should climb steadily over the
