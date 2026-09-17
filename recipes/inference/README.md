@@ -81,6 +81,10 @@ shipped example or a copy with `job_config=JOB_CONFIG`.
 }
 ```
 
+The target list above is for dense Qwen models. A Qwen3.6 LoRA checkpoint uses
+the attention-only target list in `configs/qwen36_35b_a3b_lora.json`; the
+sampling and training PEFT configurations must match.
+
 ```bash
 # Qwen3-8B LoRA
 python -m recipes.inference.serve \

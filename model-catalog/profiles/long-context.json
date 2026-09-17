@@ -1,0 +1,268 @@
+{
+  "profiles": [
+    {
+      "id": "dense-long-sft-lora-8gpu",
+      "workflow": "sft",
+      "tuningMethod": "lora",
+      "summary": "Eight-GPU sequence-parallel LoRA SFT starting point for long-context dense models.",
+      "recipePath": "recipes/sft/conversational/train.py",
+      "evidencePaths": [
+        "recipes/sft/conversational/configs/qwen3_8b_lora.json"
+      ],
+      "subJobs": [
+        {
+          "builder": "training_job",
+          "args": {
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.00002,
+              "weight_decay": 0.0,
+              "betas": [0.9, 0.999],
+              "eps": 1e-8
+            },
+            "train_batch_size": 1,
+            "n_gpus": 8,
+            "gradient_clipping": 1.0,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_training": {
+              "sp_size": 8,
+              "attn_implementation": "flash_attention_3",
+              "activation_checkpointing": true,
+              "fused_lm_head_token_chunk_size": 8192,
+              "peft_config": {
+                "peft_type": "Lora",
+                "r": 32,
+                "lora_alpha": 32,
+                "lora_dropout": 0.0,
+                "bias": "none",
+                "target_modules": [
+                  "q_proj",
+                  "k_proj",
+                  "v_proj",
+                  "o_proj",
+                  "gate_proj",
+                  "up_proj",
+                  "down_proj"
+                ]
+              },
+              "ds_config": {
+                "train_batch_size": 1,
+                "train_micro_batch_size_per_gpu": 1,
+                "gradient_accumulation_steps": 1,
+                "zero_optimization": {
+                  "stage": 2
+                },
+                "bf16": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dense-long-sft-full-8gpu",
+      "workflow": "sft",
+      "tuningMethod": "full",
+      "summary": "Eight-GPU sequence-parallel full SFT starting point for long-context dense models.",
+      "recipePath": "recipes/sft/conversational/train.py",
+      "evidencePaths": [
+        "recipes/sft/conversational/configs/qwen3_8b_full.json"
+      ],
+      "subJobs": [
+        {
+          "builder": "training_job",
+          "args": {
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.00002,
+              "weight_decay": 0.0,
+              "betas": [0.9, 0.999],
+              "eps": 1e-8
+            },
+            "train_batch_size": 1,
+            "n_gpus": 8,
+            "gradient_clipping": 1.0,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_training": {
+              "sp_size": 8,
+              "attn_implementation": "flash_attention_3",
+              "activation_checkpointing": true,
+              "fused_lm_head_token_chunk_size": 8192,
+              "ds_config": {
+                "train_batch_size": 1,
+                "train_micro_batch_size_per_gpu": 1,
+                "gradient_accumulation_steps": 1,
+                "zero_optimization": {
+                  "stage": 2
+                },
+                "bf16": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dense-long-rl-lora-8x8",
+      "workflow": "rl",
+      "tuningMethod": "lora",
+      "summary": "Sequence-parallel LoRA RL starting point with eight training and eight sampling GPUs.",
+      "recipePath": "recipes/rl/math_grpo/train.py",
+      "evidencePaths": [
+        "recipes/rl/math_grpo/configs/qwen3_8b_lora.json"
+      ],
+      "subJobs": [
+        {
+          "builder": "training_job",
+          "args": {
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.00002,
+              "weight_decay": 0.0,
+              "betas": [0.9, 0.95],
+              "eps": 1e-8
+            },
+            "train_batch_size": 1,
+            "n_gpus": 8,
+            "gradient_clipping": 1.0,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_training": {
+              "sp_size": 8,
+              "attn_implementation": "flash_attention_3",
+              "mb_spec": {
+                "max_tokens_per_mb": 10240
+              },
+              "peft_config": {
+                "peft_type": "Lora",
+                "r": 32,
+                "lora_alpha": 32,
+                "lora_dropout": 0.0,
+                "bias": "none",
+                "target_modules": [
+                  "q_proj",
+                  "k_proj",
+                  "v_proj",
+                  "o_proj",
+                  "gate_proj",
+                  "up_proj",
+                  "down_proj"
+                ]
+              },
+              "ds_config": {
+                "train_batch_size": 1,
+                "train_micro_batch_size_per_gpu": 1,
+                "gradient_accumulation_steps": 1,
+                "zero_optimization": {
+                  "stage": 2,
+                  "reduce_scatter": true
+                },
+                "bf16": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "builder": "sampling_job",
+          "args": {
+            "n_gpus": 8,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_sampling": {
+              "peft_config": {
+                "peft_type": "Lora",
+                "r": 32,
+                "lora_alpha": 32,
+                "lora_dropout": 0.0,
+                "bias": "none",
+                "target_modules": [
+                  "q_proj",
+                  "k_proj",
+                  "v_proj",
+                  "o_proj",
+                  "gate_proj",
+                  "up_proj",
+                  "down_proj"
+                ]
+              },
+              "vllm_config": {
+                "tensor_parallel_size": 8,
+                "gpu_memory_utilization": 0.8
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dense-long-rl-full-8x8",
+      "workflow": "rl",
+      "tuningMethod": "full",
+      "summary": "Sequence-parallel full RL starting point with eight training and eight sampling GPUs.",
+      "recipePath": "recipes/rl/math_grpo/train.py",
+      "evidencePaths": [
+        "recipes/rl/math_grpo/configs/qwen3_8b_full.json"
+      ],
+      "subJobs": [
+        {
+          "builder": "training_job",
+          "args": {
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.00002,
+              "weight_decay": 0.0,
+              "betas": [0.9, 0.95],
+              "eps": 1e-8
+            },
+            "train_batch_size": 1,
+            "n_gpus": 8,
+            "gradient_clipping": 1.0,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_training": {
+              "sp_size": 8,
+              "attn_implementation": "flash_attention_3",
+              "mb_spec": {
+                "max_tokens_per_mb": 10240
+              },
+              "ds_config": {
+                "train_batch_size": 1,
+                "train_micro_batch_size_per_gpu": 1,
+                "gradient_accumulation_steps": 1,
+                "zero_optimization": {
+                  "stage": 2,
+                  "reduce_scatter": true
+                },
+                "bf16": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        },
+        {
+          "builder": "sampling_job",
+          "args": {
+            "n_gpus": 8,
+            "dtype": "bfloat16",
+            "seed": 42,
+            "extra_sampling": {
+              "vllm_config": {
+                "tensor_parallel_size": 8,
+                "gpu_memory_utilization": 0.8
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

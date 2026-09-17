@@ -80,6 +80,12 @@ def _load_forward_backward_payload_builder():
     return build_forward_backward_payload
 
 
+def _hardware_choices() -> list[str]:
+    from .client import Hardware
+
+    return [member.value for member in Hardware]
+
+
 def _created_epoch(raw: Any) -> float | None:
     if raw is None:
         return None
@@ -213,9 +219,17 @@ def build_parser(
     list_jobs = subparsers.add_parser("list", help="List Cortex Training jobs.")
     list_jobs.add_argument("--status", help="Optional status filter.")
 
-    subparsers.add_parser(
+    capacity = subparsers.add_parser(
         "capacity",
         help="Show reserved GPU capacity and current usage for the caller account.",
+    )
+    capacity.add_argument(
+        "--hardware",
+        choices=_hardware_choices(),
+        help=(
+            "Show only this GPU hardware. "
+            "Omit to show capacity for every hardware type."
+        ),
     )
 
     cancel = subparsers.add_parser("cancel", help="Cancel one Cortex Training job.")
@@ -258,8 +272,8 @@ def build_parser(
         dest="target_sub_job_id",
         help=(
             "Training sub-job to load the checkpoint into, e.g. JOB_ID:training:0. "
-            "Use this for sessions with multiple training sub-jobs when you need "
-            "explicit routing control. Omit to use the default training sub-job. "
+            "Use this when you need explicit routing control; a job has at most one "
+            "training sub-job, so omitting it uses that sub-job. "
             "Use 'cortex-training get JOB_ID' to discover available sub-job IDs."
         ),
     )
@@ -311,11 +325,33 @@ def build_parser(
         help="Print the request id without polling for completion.",
     )
 
+    for command, job_parser in (
+        ("fwd-bwd", fwd_bwd),
+        ("step", step),
+        ("load", load),
+        ("generate", generate),
+        ("weight-sync", weight_sync),
+    ):
+        job_parser.prog = f"{prog} --job JOB_ID {command}"
+        job_parser.epilog = (
+            "Required global option: --job JOB_ID (alias: --job-id JOB_ID). "
+            "Place it before the subcommand."
+        )
+
     download_log = subparsers.add_parser(
         "download-log",
         help="Download all log files for a Cortex Training job's experiment run.",
     )
     download_log.add_argument("job_id")
+    download_log.add_argument(
+        "--log-type",
+        choices=("execution", "stdout"),
+        default="execution",
+        help=(
+            "Log source to download: execution artifacts (default), or the "
+            "reconstructed head-pod stdout/stderr console."
+        ),
+    )
     download_log.add_argument(
         "--output-dir",
         dest="output_dir",
@@ -326,15 +362,37 @@ def build_parser(
         ),
     )
 
+    download_metrics = subparsers.add_parser(
+        "download-metrics",
+        help="Download and reconstruct GPU metrics for a Cortex Training job.",
+    )
+    download_metrics.add_argument("job_id")
+    download_metrics.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        help=(
+            "Directory to write <sub_job_id>/gpu.jsonl files. Created if "
+            "missing. Defaults to the current working directory."
+        ),
+    )
+
     login = subparsers.add_parser(
         "login",
+        usage="%(prog)s [-h] (config | --config config)",
         help="Remember a Cortex Training config file for future commands.",
     )
-    login.add_argument(
-        "--config",
-        required=True,
-        dest="login_config",
+    login_config = login.add_mutually_exclusive_group(required=True)
+    login_config.add_argument(
+        "login_config",
+        nargs="?",
+        metavar="config",
         help="Path to the Cortex Training CLI config JSON file to remember.",
+    )
+    login_config.add_argument(
+        "--config",
+        dest="login_config_option",
+        metavar="config",
+        help="Alternative to the positional config path.",
     )
 
     if include_tui:
@@ -553,6 +611,7 @@ def parse_args(
     parser = build_parser(prog=prog, include_tui=include_tui)
     args = parser.parse_args(argv)
     if args.command == "login":
+        args.login_config = args.login_config or args.login_config_option
         return args
 
     dry_run = args.command == "submit" and args.dry_run
@@ -603,6 +662,14 @@ def _validate_create_job_body(body: dict[str, Any]) -> None:
     sub_job_configs = body.get("sub_job_configs")
     if not isinstance(sub_job_configs, list) or not sub_job_configs:
         raise ValueError("job JSON must contain a non-empty sub_job_configs list")
+    # Mirrors client.create_job_from_body; submit --dry-run never builds a client.
+    training_sub_jobs = sum(
+        1
+        for cfg in sub_job_configs
+        if isinstance(cfg, dict) and str(cfg.get("job_type") or "").strip().lower() == "training"
+    )
+    if training_sub_jobs > 1:
+        raise ValueError("at most one training sub-job is supported per job")
 
 
 def _print_json(value: Any, stdout: TextIO, *, compact: bool) -> None:
@@ -823,8 +890,17 @@ def _cmd_weight_sync(args: argparse.Namespace, client, stdout: TextIO) -> int:
 
 
 def _cmd_download_log(args: argparse.Namespace, client, stdout: TextIO) -> int:
-    logs = client.fetch_execution_logs(args.job_id)
     out_dir = Path(args.output_dir).expanduser() if args.output_dir else Path.cwd()
+    if args.log_type == "stdout":
+        logs = client.download_stdout_logs(args.job_id, out_dir)
+        _print_json(
+            {"job_id": args.job_id, "logs": logs},
+            stdout,
+            compact=args.compact,
+        )
+        return 0
+
+    logs = client.fetch_execution_logs(args.job_id)
     saved = []
     for log in logs:
         file_path = out_dir / (log["sub_job_id"] or "unknown") / log["filename"]
@@ -834,11 +910,24 @@ def _cmd_download_log(args: argparse.Namespace, client, stdout: TextIO) -> int:
             {
                 "sub_job_id": log["sub_job_id"],
                 "filename": log["filename"],
-                "s3_uri": log["s3_uri"],
+                "artifact_uri": log["artifact_uri"],
                 "saved_path": str(file_path),
             }
         )
     _print_json({"job_id": args.job_id, "logs": saved}, stdout, compact=args.compact)
+    return 0
+
+
+def _cmd_download_metrics(
+    args: argparse.Namespace, client, stdout: TextIO
+) -> int:
+    out_dir = Path(args.output_dir).expanduser() if args.output_dir else Path.cwd()
+    metrics = client.download_metrics(args.job_id, out_dir)
+    _print_json(
+        {"job_id": args.job_id, "metrics": metrics},
+        stdout,
+        compact=args.compact,
+    )
     return 0
 
 
@@ -872,7 +961,16 @@ def _run(
         _print_json({"jobs": _jobs_latest_last(jobs)}, stdout, compact=args.compact)
         return 0
     if args.command == "capacity":
-        _print_json(client.get_capacity(), stdout, compact=args.compact)
+        if args.hardware is not None:
+            capacity = client.get_capacity(hardware=args.hardware)
+        else:
+            capacity = {
+                "capacity_by_hardware": {
+                    hardware: client.get_capacity(hardware=hardware)
+                    for hardware in _hardware_choices()
+                }
+            }
+        _print_json(capacity, stdout, compact=args.compact)
         return 0
     if args.command == "cancel":
         client.cancel_job(args.job_id)
@@ -897,6 +995,8 @@ def _run(
         return _cmd_weight_sync(args, client, stdout)
     if args.command == "download-log":
         return _cmd_download_log(args, client, stdout)
+    if args.command == "download-metrics":
+        return _cmd_download_metrics(args, client, stdout)
     raise ValueError(f"unknown command: {args.command}")
 
 

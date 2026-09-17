@@ -42,6 +42,9 @@ _PARSER_CASES = [
     _base_args() + ["--job", "job-1", "generate", "generate.json"],
     _base_args() + ["--job", "job-1", "weight-sync"],
     _base_args() + ["download-log", "job-1"],
+    _base_args() + ["download-log", "job-1", "--log-type", "stdout"],
+    _base_args() + ["download-metrics", "job-1"],
+    ["login", "config.json"],
     ["login", "--config", "config.json"],
 ]
 _COMMANDS = {
@@ -58,6 +61,7 @@ _COMMANDS = {
     "generate",
     "weight-sync",
     "download-log",
+    "download-metrics",
     "login",
 }
 
@@ -66,6 +70,60 @@ _COMMANDS = {
 def test_all_commands_parse(argv):
     expected = next(argument for argument in argv if argument in _COMMANDS)
     assert cortex_cli.parse_args(argv).command == expected
+
+
+@pytest.mark.parametrize("config_args", [["test.json"], ["--config", "test.json"]])
+def test_login_parses_config(config_args, monkeypatch):
+    monkeypatch.setenv("CORTEX_TRAINING_CONFIG", "environment.json")
+    args = cortex_cli.parse_args(["--config", "global.json", "login"] + config_args)
+    assert args.login_config == "test.json"
+    assert args.config == "global.json"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["login"],
+        ["--config", "global.json", "login"],
+        ["login", "--config"],
+        ["login", "test.json", "--config", "other.json"],
+        ["login", "--config", "other.json", "test.json"],
+    ],
+)
+def test_login_requires_exactly_one_config(argv, monkeypatch):
+    monkeypatch.setenv("CORTEX_TRAINING_CONFIG", "environment.json")
+    with pytest.raises(SystemExit) as exc:
+        cortex_cli.parse_args(argv)
+    assert exc.value.code == 2
+
+
+def test_login_help_shows_both_config_forms(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cortex_cli.parse_args(["login", "--help"])
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "usage: cortex-training login [-h] (config | --config config)" in help_text
+
+
+@pytest.mark.parametrize("command", ["fwd-bwd", "step", "load", "generate", "weight-sync"])
+def test_job_action_help_shows_global_job_placement(command, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cortex_cli.parse_args([command, "--help"])
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert f"usage: cortex-training --job JOB_ID {command}" in help_text
+    assert "--job-id JOB_ID" in help_text
+    assert "Place it before the subcommand." in " ".join(help_text.split())
+
+
+@pytest.mark.parametrize("command", ["get", "checkpoints", "cancel", "wait"])
+def test_job_management_help_keeps_positional_job(command, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cortex_cli.parse_args([command, "--help"])
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert f"usage: cortex-training {command} [-h] job_id" in help_text
+    assert "--job" not in help_text
 
 
 def _run_list():

@@ -29,10 +29,15 @@ Two suites:
 from __future__ import annotations
 
 import base64
+import gzip
 import importlib
 import json
 import sys
+from pathlib import Path
+from pathlib import PurePosixPath
 from types import SimpleNamespace
+from urllib.parse import unquote
+from urllib.parse import urlparse
 from unittest.mock import MagicMock
 
 import pytest
@@ -58,6 +63,7 @@ TrainingConfig = nc.TrainingConfig
 InferenceConfig = nc.InferenceConfig
 SubJobConfig = nc.SubJobConfig
 CortexTrainingClient = nc.CortexTrainingClient
+Hardware = nc.Hardware
 
 
 def _wire_load(data: bytes):
@@ -997,6 +1003,97 @@ class TestCreateJob:
         body = c._session.post.call_args.kwargs["json"]
         assert "experiment_name" not in body
 
+    @pytest.mark.parametrize(
+        "hardware, wire_value",
+        [
+            (Hardware.H200, "H200"),
+            (Hardware.B200, "B200"),
+            (Hardware.B300, "B300"),
+            ("B200", "B200"),
+        ],
+    )
+    def test_includes_hardware_when_given(self, hardware, wire_value):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub], hardware=hardware)
+        body = c._session.post.call_args.kwargs["json"]
+        assert body["hardware"] == wire_value
+
+    # Omitted rather than sent as H200: the server owns the default.
+    def test_omits_hardware_when_none(self):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub])
+        body = c._session.post.call_args.kwargs["json"]
+        assert "hardware" not in body
+
+    @pytest.mark.parametrize("hardware", ["A10", "h200", "", 200])
+    def test_rejects_unknown_hardware(self, hardware):
+        c = _make_client()
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        with pytest.raises(ValueError, match="hardware must be one of"):
+            c.create_job(sub_jobs=[sub], hardware=hardware)
+
+    # 0 is accepted here; pending_timeout_seconds rejects it.
+    @pytest.mark.parametrize(
+        "idle_timeout_seconds", [0, 300, 1_800, 604_800]
+    )
+    def test_includes_valid_idle_timeout_seconds(self, idle_timeout_seconds):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub], idle_timeout_seconds=idle_timeout_seconds)
+        body = c._session.post.call_args.kwargs["json"]
+        assert body["idle_timeout_seconds"] == idle_timeout_seconds
+
+    def test_omits_idle_timeout_when_none(self):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub])
+        body = c._session.post.call_args.kwargs["json"]
+        assert "idle_timeout_seconds" not in body
+
+    @pytest.mark.parametrize(
+        "idle_timeout_seconds",
+        [-1, 1, 299, 604_801, True, 300.0, "300"],
+    )
+    def test_rejects_invalid_idle_timeout_seconds(self, idle_timeout_seconds):
+        c = _make_client()
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        with pytest.raises(ValueError, match="idle_timeout_seconds"):
+            c.create_job(sub_jobs=[sub], idle_timeout_seconds=idle_timeout_seconds)
+        c._session.post.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "pending_timeout_seconds", [300, 3_600, 86_400, 604_800]
+    )
+    def test_includes_valid_pending_timeout_seconds(self, pending_timeout_seconds):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub], pending_timeout_seconds=pending_timeout_seconds)
+        body = c._session.post.call_args.kwargs["json"]
+        assert body["pending_timeout_seconds"] == pending_timeout_seconds
+
+    def test_omits_pending_timeout_when_none(self):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        c.create_job(sub_jobs=[sub])
+        body = c._session.post.call_args.kwargs["json"]
+        assert "pending_timeout_seconds" not in body
+
+    # 0 is rejected here; idle_timeout_seconds accepts it.
+    @pytest.mark.parametrize(
+        "pending_timeout_seconds",
+        [-1, 0, 1, 299, 604_801, True, 300.0, "300"],
+    )
+    def test_rejects_invalid_pending_timeout_seconds(self, pending_timeout_seconds):
+        c = _make_client()
+        sub = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        with pytest.raises(ValueError, match="pending_timeout_seconds"):
+            c.create_job(
+                sub_jobs=[sub], pending_timeout_seconds=pending_timeout_seconds
+            )
+        c._session.post.assert_not_called()
+
     def test_supports_multiple_sub_jobs(self):
         c = _make_client(post_json={"job_id": "srv-1"})
         train = SubJobConfig.training_job(
@@ -1037,6 +1134,64 @@ class TestCreateJob:
         c = _make_client()
         with pytest.raises(ValueError, match="sub_job_configs"):
             c.create_job_from_body({"sub_job_configs": []})
+
+    def test_rejects_two_training_sub_jobs_before_post(self):
+        c = _make_client()
+        training = SubJobConfig.training_job(
+            model_name="gpt2",
+            optimizer={"type": "adamw"},
+            max_seq_len=128,
+            train_batch_size=1,
+            n_gpus=2,
+        )
+        with pytest.raises(ValueError, match="at most one training sub-job"):
+            c.create_job(sub_jobs=[training, training])
+        c._session.post.assert_not_called()
+
+    def test_create_job_from_body_rejects_two_training_sub_jobs_before_post(self):
+        c = _make_client()
+        body = {
+            "sub_job_configs": [
+                {
+                    "job_type": "training",
+                    "model_name": "gpt2",
+                    "training_config": {"max_seq_len": 128, "train_batch_size": 1, "n_gpus": 2},
+                },
+                {
+                    "job_type": " TRAINING ",
+                    "model_name": "gpt2",
+                    "training_config": {"max_seq_len": 128, "train_batch_size": 1, "n_gpus": 2},
+                },
+            ],
+        }
+        with pytest.raises(ValueError, match="at most one training sub-job"):
+            c.create_job_from_body(body)
+        c._session.post.assert_not_called()
+
+    def test_allows_one_training_with_multiple_sampling(self):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        training = SubJobConfig.training_job(
+            model_name="gpt2",
+            optimizer={"type": "adamw"},
+            max_seq_len=128,
+            train_batch_size=1,
+            n_gpus=2,
+        )
+        sampling = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        assert c.create_job(sub_jobs=[training, sampling, sampling]) == "srv-1"
+        body = c._session.post.call_args.kwargs["json"]
+        assert [sj["job_type"] for sj in body["sub_job_configs"]] == [
+            "training",
+            "sampling",
+            "sampling",
+        ]
+
+    def test_allows_multiple_sampling_without_training(self):
+        c = _make_client(post_json={"job_id": "srv-1"})
+        sampling = SubJobConfig.sampling_job(model_name="gpt2", max_seq_len=128, n_gpus=1)
+        assert c.create_job(sub_jobs=[sampling, sampling]) == "srv-1"
+        body = c._session.post.call_args.kwargs["json"]
+        assert [sj["job_type"] for sj in body["sub_job_configs"]] == ["sampling", "sampling"]
 
     def test_create_job_from_body_rejects_debug_without_env(self, monkeypatch):
         monkeypatch.delenv(nc.DEBUG_OPTIONS_ENV, raising=False)
@@ -1132,39 +1287,78 @@ class TestReadAndControl:
         c = _make_client(
             get_json={
                 "has_reservation": True,
+                "max_total_gpus": 64,
                 "reserved_gpus": 64,
                 "in_use_gpus": 8,
-                "available_gpus": 56,
+                "pending_gpus": 16,
+                "available_gpus": 40,
             }
         )
         cap = c.get_capacity()
         assert cap == {
             "has_reservation": True,
+            "max_total_gpus": 64,
             "reserved_gpus": 64,
             "in_use_gpus": 8,
-            "available_gpus": 56,
+            "pending_gpus": 16,
+            "available_gpus": 40,
         }
         c._session.get.assert_called_once_with(f"{c._prefix}/capacity")
 
+    def test_get_capacity_reports_uncapped_ceiling(self):
+        # -1 is the uncapped sentinel and must survive as-is: 0 is a real quota
+        # of zero, so collapsing the two would report the opposite ceiling.
+        c = _make_client(
+            get_json={"max_total_gpus": -1, "in_use_gpus": 16, "available_gpus": 96}
+        )
+        cap = c.get_capacity()
+        assert cap["max_total_gpus"] == -1
+        assert cap["has_reservation"] is False
+
+    def test_get_capacity_sends_hardware_query(self):
+        c = _make_client(get_json={"has_reservation": True, "reserved_gpus": 32})
+        c.get_capacity(hardware=Hardware.B200)
+        c._session.get.assert_called_once_with(
+            f"{c._prefix}/capacity", params={"hardware": "B200"}
+        )
+
+    def test_get_capacity_rejects_unknown_hardware(self):
+        c = _make_client(get_json={})
+        with pytest.raises(ValueError, match="hardware must be one of"):
+            c.get_capacity(hardware="A10")
+        c._session.get.assert_not_called()
+
     def test_get_capacity_fills_proto3_omitted_defaults(self):
-        # proto3 JSON omits zero/false fields; an unreserved account is `{}`.
+        # proto3 JSON omits zero/false fields; an account holding nothing under a
+        # zero ceiling is `{}`.
         c = _make_client(get_json={})
         cap = c.get_capacity()
         assert cap == {
             "has_reservation": False,
+            "max_total_gpus": 0,
             "reserved_gpus": 0,
             "in_use_gpus": 0,
+            "pending_gpus": 0,
             "available_gpus": 0,
         }
 
     def test_get_capacity_fills_partial_omitted_fields(self):
-        # Fully-drained reservation: only the non-zero reserved_gpus is present.
-        c = _make_client(get_json={"has_reservation": True, "reserved_gpus": 8})
+        # Ceiling fully claimed by queued work: in_use and available are omitted.
+        c = _make_client(
+            get_json={
+                "has_reservation": True,
+                "max_total_gpus": 8,
+                "reserved_gpus": 8,
+                "pending_gpus": 8,
+            }
+        )
         cap = c.get_capacity()
         assert cap == {
             "has_reservation": True,
+            "max_total_gpus": 8,
             "reserved_gpus": 8,
             "in_use_gpus": 0,
+            "pending_gpus": 8,
             "available_gpus": 0,
         }
 
@@ -2347,35 +2541,65 @@ class TestEvents:
 
 
 class TestExecutionLogDownload:
-    @staticmethod
-    def _make_creds_json():
-        return json.dumps(
-            {
-                "locationType": "S3",
-                "location": "s3://bucket/stage/abc/",
-                "region": "us-west-2",
-                "creds": {
-                    "AWS_KEY_ID": "key",
-                    "AWS_SECRET_KEY": "secret",
-                    "AWS_TOKEN": "token",
-                },
-            }
-        )
+    class FakeArtifactConnection:
+        def __init__(self, list_rows=None, content_by_uri=None):
+            self.list_rows = list_rows or {}
+            self.content_by_uri = content_by_uri or {}
+            self.commands = []
+            self.closed = False
 
-    def test_parse_s3_stage_credentials_extracts_documented_keys(self):
-        creds = nc._parse_s3_stage_credentials(self._make_creds_json())
-        assert creds == {
-            "bucket": "bucket",
-            "prefix": "stage/abc",
-            "region": "us-west-2",
-            "access_key_id": "key",
-            "secret_access_key": "secret",
-            "session_token": "token",
-        }
+        class Cursor:
+            def __init__(self, connection):
+                self.connection = connection
+                self.rows = []
 
-    def test_parse_s3_stage_credentials_rejects_non_s3(self):
-        with pytest.raises(NotImplementedError):
-            nc._parse_s3_stage_credentials({"locationType": "AZURE"})
+            @staticmethod
+            def _unquote(value):
+                assert value.startswith("'") and value.endswith("'")
+                return value[1:-1].replace("''", "'")
+
+            def execute(self, statement):
+                self.connection.commands.append(statement)
+                if statement.startswith("LIST "):
+                    uri = self._unquote(statement.removeprefix("LIST "))
+                    self.rows = self.connection.list_rows.get(uri, [])
+                elif statement.startswith("GET "):
+                    source_literal, target_literal = statement.removeprefix("GET ").split(" ", 1)
+                    source = self._unquote(source_literal)
+                    target_uri = self._unquote(target_literal)
+                    target = Path(unquote(urlparse(target_uri).path))
+                    target.mkdir(parents=True, exist_ok=True)
+                    assert not list(target.iterdir())
+                    (target / PurePosixPath(source).name).write_bytes(
+                        self.connection.content_by_uri[source]
+                    )
+                    self.rows = [(source, "DOWNLOADED")]
+                else:
+                    raise AssertionError(f"unexpected SQL: {statement}")
+                return self
+
+            def fetchall(self):
+                return self.rows
+
+            def close(self):
+                pass
+
+        def cursor(self):
+            return self.Cursor(self)
+
+        def close(self):
+            self.closed = True
+
+    def test_sql_literal_and_artifact_path_validation(self):
+        assert nc._sql_string_literal("snow://exp/O'Brien") == "'snow://exp/O''Brien'"
+        assert nc._validate_artifact_relative_path("_stdout/job/file.gz") == "_stdout/job/file.gz"
+        for path in ("", "/absolute", "../escape", "a/../escape", r"a\b"):
+            with pytest.raises(ValueError, match="unsafe"):
+                nc._validate_artifact_relative_path(path)
+
+    def test_artifact_connection_requires_pat_client(self):
+        with pytest.raises(RuntimeError, match="PAT-authenticated"):
+            _make_client()._open_experiment_artifact_connection()
 
     def test_get_experiment_run_calls_endpoint(self):
         c = _make_client(
@@ -2395,86 +2619,190 @@ class TestExecutionLogDownload:
                 "experiment_run_name": "RUN_ABC",
             }
         )
-        sql_calls: list[str] = []
-
-        def fake_scalar(statement):
-            sql_calls.append(statement)
-            return self._make_creds_json()
-
-        monkeypatch.setattr(c, "_query_sql_scalar", fake_scalar)
-
-        listed_prefixes: list[tuple[str, str]] = []
-        get_calls: list[tuple[str, str]] = []
-        keys_in_stage = [
-            # Two siblings under the same sub_job (mixed extensions): both kept.
-            "stage/abc/versions/v1/checkpoints/_logs/job-1:training:0/execution.jsonl",
-            "stage/abc/versions/v1/checkpoints/_logs/job-1:training:0/server.log",
-            # Different sub_job: still kept.
-            "stage/abc/versions/v1/checkpoints/_logs/job-1:sampling:0/execution.jsonl",
-            # _logs subtree without the checkpoints/ ancestor: still kept.
-            "stage/abc/versions/v1/_logs/job-1:eval:0/execution.jsonl",
-            # Non-_logs entry: filtered out.
-            "stage/abc/versions/v1/checkpoints/model.bin",
+        run_uri = "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/"
+        paths = [
+            "_logs/job-1:eval:0/execution.jsonl",
+            "checkpoints/_logs/job-1:training:0/execution.jsonl",
+            "checkpoints/_logs/job-1:training:0/server.log",
+            "_logs/other-job:eval:0/execution.jsonl",
         ]
-        bodies = {
-            keys_in_stage[0]: b'{"a":1}\n',
-            keys_in_stage[1]: b"server line\n",
-            keys_in_stage[2]: b'{"b":2}\n',
-            keys_in_stage[3]: b'{"c":3}\n',
-        }
+        connection = self.FakeArtifactConnection(
+            {
+                run_uri + "_logs/": [
+                    (f"/versions/RUN_ABC/{paths[0]}",),
+                    (f"/versions/RUN_ABC/{paths[3]}",),
+                ],
+                run_uri + "checkpoints/_logs/": [
+                    (f"/versions/RUN_ABC/{path}",) for path in paths[1:3]
+                ],
+            },
+            {
+                run_uri + paths[0]: b'{"c":3}\n',
+                run_uri + paths[1]: b'{"a":1}\n',
+                run_uri + paths[2]: b"server line\n",
+            },
+        )
+        monkeypatch.setattr(
+            c, "_open_experiment_artifact_connection", lambda: connection
+        )
 
-        class FakePaginator:
-            def paginate(self, *, Bucket, Prefix):
-                listed_prefixes.append((Bucket, Prefix))
-                return iter([{"Contents": [{"Key": k} for k in keys_in_stage]}])
-
-        class FakeS3:
-            def get_paginator(self, name):
-                assert name == "list_objects_v2"
-                return FakePaginator()
-
-            def get_object(self, *, Bucket, Key):
-                get_calls.append((Bucket, Key))
-                return {"Body": SimpleNamespace(read=lambda: bodies[Key])}
-
-        monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=lambda *a, **kw: FakeS3()))
-
-        out = c.fetch_execution_logs("job-1")
-
-        assert sql_calls == ["SELECT SYSTEM$GET_VSTAGE_WRITE_CREDS('snow://experiment/DB.SCH.EXP/versions/RUN_ABC/')"]
-        assert listed_prefixes == [("bucket", "stage/abc/")]
-        assert get_calls == [
-            ("bucket", keys_in_stage[0]),
-            ("bucket", keys_in_stage[1]),
-            ("bucket", keys_in_stage[2]),
-            ("bucket", keys_in_stage[3]),
-        ]
-        assert out == [
+        assert c.fetch_execution_logs("job-1") == [
+            {
+                "sub_job_id": "job-1:eval:0",
+                "filename": "execution.jsonl",
+                "artifact_uri": run_uri + paths[0],
+                "content": '{"c":3}\n',
+            },
             {
                 "sub_job_id": "job-1:training:0",
                 "filename": "execution.jsonl",
-                "s3_uri": f"s3://bucket/{keys_in_stage[0]}",
+                "artifact_uri": run_uri + paths[1],
                 "content": '{"a":1}\n',
             },
             {
                 "sub_job_id": "job-1:training:0",
                 "filename": "server.log",
-                "s3_uri": f"s3://bucket/{keys_in_stage[1]}",
+                "artifact_uri": run_uri + paths[2],
                 "content": "server line\n",
             },
-            {
-                "sub_job_id": "job-1:sampling:0",
-                "filename": "execution.jsonl",
-                "s3_uri": f"s3://bucket/{keys_in_stage[2]}",
-                "content": '{"b":2}\n',
-            },
-            {
-                "sub_job_id": "job-1:eval:0",
-                "filename": "execution.jsonl",
-                "s3_uri": f"s3://bucket/{keys_in_stage[3]}",
-                "content": '{"c":3}\n',
-            },
         ]
+        assert connection.closed
+
+    @pytest.mark.parametrize(
+        ("artifact_name", "chunk_name", "destination_name", "method_name"),
+        [
+            ("stdout", "console", "stdout.log", "download_stdout_logs"),
+            ("metrics", "gpu", "gpu.jsonl", "download_metrics"),
+        ],
+    )
+    def test_download_reconstructs_sorted_chunks_atomically(
+        self,
+        artifact_name,
+        chunk_name,
+        destination_name,
+        method_name,
+        tmp_path,
+        monkeypatch,
+    ):
+        c = _make_client()
+        run_uri = "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/"
+        root = f"_{artifact_name}"
+        paths = [
+            f"{root}/job-1:training:0/{chunk_name}.20260904-120002.zulu.gz",
+            f"{root}/job-1:training:0/{chunk_name}.20260904-120001.first.gz",
+            f"{root}/job-1:training:0/{chunk_name}.20260904-120002.alpha.gz",
+            f"{root}/other-job:training:0/{chunk_name}.20260904-120003.other.gz",
+            f"{root}/job-1:training:0/{chunk_name}.bad.gz",
+        ]
+        connection = self.FakeArtifactConnection(
+            {
+                run_uri + root + "/": [
+                    (f"/versions/RUN_ABC/{path}",) for path in paths
+                ],
+                run_uri + "checkpoints/" + root + "/": [],
+            },
+            {
+                run_uri + paths[0]: gzip.compress(b"third\n"),
+                run_uri + paths[1]: gzip.compress(b"first\n"),
+                run_uri + paths[2]: gzip.compress(b"second\n"),
+            },
+        )
+        monkeypatch.setattr(c, "_experiment_run_uri", lambda _: (run_uri, "RUN_ABC"))
+        monkeypatch.setattr(
+            c, "_open_experiment_artifact_connection", lambda: connection
+        )
+
+        result = getattr(c, method_name)("job-1", tmp_path)
+
+        destination = tmp_path / "job-1:training:0" / destination_name
+        assert destination.read_bytes() == b"first\nsecond\nthird\n"
+        assert result == [
+            {
+                "sub_job_id": "job-1:training:0",
+                "filename": destination_name,
+                "saved_path": str(destination),
+                "chunk_count": 3,
+                "first_artifact_uri": run_uri + paths[1],
+                "last_artifact_uri": run_uri + paths[0],
+            }
+        ]
+        assert connection.closed
+
+    @pytest.mark.parametrize(
+        ("artifact_name", "chunk_name", "destination_name", "method_name"),
+        [
+            ("stdout", "console", "stdout.log", "download_stdout_logs"),
+            ("metrics", "gpu", "gpu.jsonl", "download_metrics"),
+        ],
+    )
+    def test_download_corruption_preserves_existing_file(
+        self,
+        artifact_name,
+        chunk_name,
+        destination_name,
+        method_name,
+        tmp_path,
+        monkeypatch,
+    ):
+        c = _make_client()
+        run_uri = "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/"
+        root = f"_{artifact_name}"
+        good = f"{root}/job-1:training:0/{chunk_name}.20260904-120001.good.gz"
+        bad = f"{root}/job-1:training:0/{chunk_name}.20260904-120002.bad.gz"
+        destination = tmp_path / "job-1:training:0" / destination_name
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(b"previous\n")
+        connection = self.FakeArtifactConnection(
+            {
+                run_uri + root + "/": [
+                    (f"/versions/RUN_ABC/{good}",),
+                    (f"/versions/RUN_ABC/{bad}",),
+                ],
+                run_uri + "checkpoints/" + root + "/": [],
+            },
+            {
+                run_uri + good: gzip.compress(b"new\n"),
+                run_uri + bad: b"not gzip",
+            },
+        )
+        monkeypatch.setattr(c, "_experiment_run_uri", lambda _: (run_uri, "RUN_ABC"))
+        monkeypatch.setattr(
+            c, "_open_experiment_artifact_connection", lambda: connection
+        )
+
+        with pytest.raises(gzip.BadGzipFile):
+            getattr(c, method_name)("job-1", tmp_path)
+
+        assert destination.read_bytes() == b"previous\n"
+        assert not list(destination.parent.glob(".*.tmp"))
+        assert connection.closed
+
+    def test_download_metrics_rejects_duplicate_roots_before_get(
+        self, tmp_path, monkeypatch
+    ):
+        c = _make_client()
+        run_uri = "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/"
+        sub_job_id = "job-1:training:0"
+        first = f"_metrics/{sub_job_id}/gpu.20260904-120001.first.gz"
+        second = f"checkpoints/_metrics/{sub_job_id}/gpu.20260904-120002.second.gz"
+        connection = self.FakeArtifactConnection(
+            {
+                run_uri + "_metrics/": [(f"/versions/RUN_ABC/{first}",)],
+                run_uri + "checkpoints/_metrics/": [
+                    (f"/versions/RUN_ABC/{second}",)
+                ],
+            }
+        )
+        monkeypatch.setattr(c, "_experiment_run_uri", lambda _: (run_uri, "RUN_ABC"))
+        monkeypatch.setattr(
+            c, "_open_experiment_artifact_connection", lambda: connection
+        )
+
+        with pytest.raises(ValueError, match="multiple artifact roots"):
+            c.download_metrics("job-1", tmp_path)
+
+        assert not any(command.startswith("GET ") for command in connection.commands)
+        assert connection.closed
 
     def test_fetch_execution_logs_errors_when_experiment_run_missing_fields(self):
         c = _make_client(get_json={"experiment_name": "DB.SCH.EXP"})

@@ -6,15 +6,27 @@ Download complete execution logs:
 cortex-training download-log JOB_ID --output-dir /path/to/logs
 ```
 
+Download persisted stdout/stderr reconstructed as one file per sub-job:
+
+```bash
+cortex-training download-log JOB_ID --log-type stdout --output-dir /path/to/logs
+```
+
+Download reconstructed GPU metrics:
+
+```bash
+cortex-training download-metrics JOB_ID --output-dir /path/to/metrics
+```
+
+Metrics are written to `<output_dir>/<sub_job_id>/gpu.jsonl`.
+
 Tail a running job in the terminal:
 
 ```bash
 cortex-training tui JOB_ID
 ```
 
-Recipe-level metrics are written under each recipe's `log_path`. GPU
-utilization, memory, throughput, tokens per second, and MFU are roadmap items
-and are not yet available as a complete documented workflow.
+Recipe-level metrics are also written under each recipe's `log_path`.
 
 PAT-authenticated Python clients also emit best-effort client-side operation
 metrics over Snowflake's OTLP endpoint. Failures of essential SDK methods are

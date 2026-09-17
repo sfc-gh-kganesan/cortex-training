@@ -102,6 +102,7 @@ sub-jobs. Pass a shipped example or a copy with `job_config=JOB_CONFIG`.
         "n_gpus": NUM_TRAINING_GPUS,
         "max_seq_len": MAX_SEQ_LEN,
         "train_batch_size": TRAIN_BATCH_SIZE,
+        "sp_size": SEQUENCE_PARALLEL_SIZE,
         "gradient_clipping": GRADIENT_CLIPPING,
         "model_provider": MODEL_PROVIDER, // Use prime_rl for MoE
         "attn_implementation": "flash_attention_3",
@@ -153,6 +154,12 @@ sub-jobs. Pass a shipped example or a copy with `job_config=JOB_CONFIG`.
   ]
 }
 ```
+
+The target list above is for dense Qwen models. For
+`Qwen/Qwen3.6-35B-A3B`, use the shipped LoRA config with
+`model_provider: "prime_rl"` and attention-only targets (`q_proj`, `k_proj`,
+`v_proj`, and `o_proj`). PrimeRL does not yet support LoRA on routed experts;
+`gate_proj`, `up_proj`, and `down_proj` do not select those parameters.
 
 ## Evaluation and Logs
 

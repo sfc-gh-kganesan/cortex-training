@@ -66,6 +66,7 @@ shipped example or a copy with `job_config=JOB_CONFIG`.
         "n_gpus": NUM_TRAINING_GPUS,
         "max_seq_len": MAX_SEQ_LEN,
         "train_batch_size": TRAIN_BATCH_SIZE,
+        "sp_size": SEQUENCE_PARALLEL_SIZE,
         "gradient_clipping": GRADIENT_CLIPPING,
         "model_provider": MODEL_PROVIDER, // Use prime_rl for MoE
         "attn_implementation": "flash_attention_3",
@@ -106,6 +107,20 @@ shipped example or a copy with `job_config=JOB_CONFIG`.
   ]
 }
 ```
+
+The target list above is for dense Qwen models. For
+`Qwen/Qwen3.6-35B-A3B`, use the shipped LoRA config with
+`model_provider: "prime_rl"` and attention-only targets (`q_proj`, `k_proj`,
+`v_proj`, and `o_proj`). PrimeRL does not yet support LoRA on routed experts;
+`gate_proj`, `up_proj`, and `down_proj` do not select those parameters.
+The shipped Qwen3.6 configs use sequence parallel size 8 and logical batch 1
+to run at the model's 262K context limit.
+
+For dense long-context profiles, an integer
+`fused_lm_head_token_chunk_size` makes this recipe use the weighted
+`causal_cross_entropy` processing path. DSS then consumes chunked per-token
+log probabilities without materializing the full `[sequence, vocabulary]`
+logits tensor.
 
 ```bash
 python -m recipes.sft.conversational.train \

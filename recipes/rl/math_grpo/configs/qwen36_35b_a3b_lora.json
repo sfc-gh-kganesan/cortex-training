@@ -6,7 +6,7 @@
       "dtype": "bfloat16",
       "seed": 42,
       "inference_config": {
-        "max_seq_len": 8192,
+        "max_seq_len": 262144,
         "n_gpus": 8,
         "vllm_config": {
           "tensor_parallel_size": 8,
@@ -38,8 +38,9 @@
       "seed": 42,
       "training_config": {
         "n_gpus": 8,
-        "max_seq_len": 8192,
-        "train_batch_size": 8,
+        "max_seq_len": 262144,
+        "train_batch_size": 1,
+        "sp_size": 8,
         "gradient_clipping": 1.0,
         "model_provider": "prime_rl",
         "attn_implementation": "flash_attention_3",
@@ -70,7 +71,7 @@
           "eps": 1e-08
         },
         "ds_config": {
-          "train_batch_size": 8,
+          "train_batch_size": 1,
           "train_micro_batch_size_per_gpu": 1,
           "gradient_accumulation_steps": 1,
           "zero_optimization": {

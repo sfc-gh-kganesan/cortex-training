@@ -74,13 +74,13 @@ operation.
 
 | Method | Returns | Notes |
 |---|---|---|
-| `create_job(sub_jobs, job_id=None, experiment_name=None)` | `job_id` | Validates each `SubJobConfig` client-side first |
-| `create_job_from_body(body)` | response dict | For callers that already hold the REST JSON |
+| `create_job(sub_jobs, job_id=None, experiment_name=None, hardware=None)` | `job_id` | Validates each `SubJobConfig` client-side first. A job takes zero or one `training` sub-job and any number of `sampling` / `log_probability` sub-jobs. `hardware` is `H200`, `B200`, or `B300` (the `Hardware` enum or its string); omitted means `H200` |
+| `create_job_from_body(body)` | response dict | For callers that already hold the REST JSON. Enforces the same one-training-sub-job rule before sending |
 | `get_job(job_id)` | job dict | Includes `sub_jobs` with their configs |
 | `list_jobs(status=None)` | list of jobs | Returns the inner list, not the envelope |
 | `wait_for_job(job_id)` | job dict | Polls until `running`; raises on `failed`/`done`/`cancelled` or timeout. Does not treat `terminated` as terminal |
 | `cancel_job(job_id)` | `None` | Idempotent while cancelling/cancelled |
-| `get_capacity()` | capacity dict | `has_reservation`, `reserved_gpus`, `in_use_gpus`, `available_gpus`. The server's `max_total_gpus` ceiling is not surfaced yet |
+| `get_capacity(hardware=None)` | capacity dict | `has_reservation`, `max_total_gpus`, `reserved_gpus`, `in_use_gpus`, `pending_gpus`, `available_gpus`, scoped to `hardware` (omitted means the server default, H200). The CLI `capacity` command queries every type unless `--hardware` is set. `max_total_gpus` is the canonical ceiling (`-1` uncapped); `reserved_gpus` is deprecated |
 
 ## Training and sampling
 
@@ -109,7 +109,11 @@ operation.
 `tail_logs(job_id, ...)` returns one cursor page;
 `stream_logs(job_id, follow=True, ...)` yields entries and keeps polling.
 `fetch_execution_logs(job_id)` downloads every log file for the job's experiment
-run and returns `{sub_job_id, filename, s3_uri, content}` dicts.
+run and returns `{sub_job_id, filename, artifact_uri, content}` dicts.
+`download_stdout_logs(job_id, output_dir)` reconstructs persisted console chunks
+as `<output_dir>/<sub_job_id>/stdout.log`.
+`download_metrics(job_id, output_dir)` reconstructs GPU metric chunks as
+`<output_dir>/<sub_job_id>/gpu.jsonl`.
 `get_experiment_run(job_id)` resolves the experiment/run names.
 
 ## Building payloads

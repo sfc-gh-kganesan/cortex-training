@@ -35,12 +35,15 @@ from __future__ import annotations
 
 import base64
 import functools
+import gzip
 import hashlib
 import inspect
 import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 from collections.abc import Iterator
@@ -48,6 +51,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
+from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any
 
 import requests
@@ -63,6 +68,14 @@ from cortex_training.telemetry import CachedSessionTokenProvider
 from cortex_training.telemetry import OtlpMetricEmitter
 
 logger = logging.getLogger(__name__)
+
+_STDOUT_CHUNK_RE = re.compile(
+    r"^console\.(?P<timestamp>\d{8}-\d{6})\.(?P<suffix>[^./\\]+)\.gz$"
+)
+_GPU_METRICS_CHUNK_RE = re.compile(
+    r"^gpu\.(?P<timestamp>\d{8}-\d{6})\.(?P<suffix>[^./\\]+)\.gz$"
+)
+_STREAM_COPY_BUFFER_BYTES = 1024 * 1024
 
 # Env var that unlocks create-job debug options. These are an internal-only
 # capability and are deliberately not documented for external use: the client
@@ -376,6 +389,30 @@ class JobType(str, Enum):
     TRAINING = "training"
     SAMPLING = "sampling"
     LOG_PROBABILITY = "log_probability"
+
+
+class Hardware(str, Enum):
+    """GPU hardware for create job and capacity.
+
+    Wire values match the REST ``hardware`` field; see
+    ``docs/reference/rest-api.md`` sections 5.1 and 5.4. Omitting it defaults to
+    H200 on the server. Unknown values are rejected client-side.
+    """
+
+    H200 = "H200"
+    B200 = "B200"
+    B300 = "B300"
+
+
+def _hardware_wire(hardware: Hardware | str) -> str:
+    """Return the wire spelling for ``hardware``."""
+    if isinstance(hardware, Hardware):
+        return hardware.value
+    try:
+        return Hardware(hardware).value
+    except ValueError as exc:
+        allowed = ", ".join(member.value for member in Hardware)
+        raise ValueError(f"hardware must be one of {allowed}, got {hardware!r}") from exc
 
 
 def _effective_primerl_config(extra: dict) -> dict:
@@ -958,30 +995,23 @@ def build_forward_backward_payload(spec: dict[str, Any]) -> bytes:
     return serialize_forward_backward_args(args, kwargs)
 
 
-def _parse_s3_stage_credentials(raw_value: Any) -> dict[str, str]:
-    stage = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
-    if not isinstance(stage, dict):
-        raise ValueError("stage credentials response is not a JSON object")
-    if (stage.get("locationType") or "").upper() != "S3":
-        raise NotImplementedError(f"execution log download only supports S3 stages; got {stage.get('locationType')!r}")
-    location = (stage.get("location") or "").removeprefix("s3://").strip("/")
-    bucket, _, prefix = location.partition("/")
-    if not bucket:
-        raise ValueError(f"stage credentials missing bucket: {stage.get('location')!r}")
-    creds = stage.get("creds")
-    if not isinstance(creds, dict):
-        raise ValueError("stage credentials missing AWS creds")
-    try:
-        return {
-            "bucket": bucket,
-            "prefix": prefix,
-            "region": stage.get("region") or "",
-            "access_key_id": creds["AWS_KEY_ID"],
-            "secret_access_key": creds["AWS_SECRET_KEY"],
-            "session_token": creds.get("AWS_TOKEN"),
-        }
-    except KeyError as exc:
-        raise ValueError(f"stage credentials missing AWS field: {exc.args[0]}") from exc
+def _sql_string_literal(value: str) -> str:
+    """Return ``value`` as a single-quoted Snowflake SQL string."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _validate_artifact_relative_path(path: str) -> str:
+    """Reject paths that could escape or ambiguously address the run stage."""
+    candidate = PurePosixPath(path)
+    if (
+        not path
+        or path.startswith("/")
+        or "\\" in path
+        or any(part in {"", ".", ".."} for part in path.split("/"))
+        or candidate.name in {"", ".", ".."}
+    ):
+        raise ValueError(f"unsafe experiment artifact path: {path!r}")
+    return path
 
 
 # ─── HTTP client ─────────────────────────────────────────────────────────
@@ -1064,6 +1094,7 @@ class CortexTrainingClient:
         # validation); a missing key means it has not been resolved yet (e.g. a
         # transient get_job failure), so a later call will retry.
         self._sampling_max_seq_len: dict[str, int | None] = {}
+        self._artifact_connection_config: dict[str, str] | None = None
         self._metric_emitter: OtlpMetricEmitter | None = None
         self._operation_metric_state = threading.local()
         self._session = requests.Session()
@@ -1100,6 +1131,7 @@ class CortexTrainingClient:
         client._session.headers["Authorization"] = f"Bearer {pat}"
         client._session.headers["X-Snowflake-Authorization-Token-Type"] = "PROGRAMMATIC_ACCESS_TOKEN"
         client._session.verify = verify_ssl
+        client._artifact_connection_config = {"host": host, "pat": pat}
         if not _telemetry_disabled():
             token_provider = CachedSessionTokenProvider(
                 client.base_url,
@@ -1323,16 +1355,50 @@ class CortexTrainingClient:
         sub_jobs: list[SubJobConfig],
         job_id: str | None = None,
         experiment_name: str | None = None,
+        hardware: Hardware | str | None = None,
+        idle_timeout_seconds: int | None = None,
+        pending_timeout_seconds: int | None = None,
     ) -> str:
         """Create a job from a list of sub-jobs and return its server job_id.
 
         Each :class:`SubJobConfig` is validated client-side before the request
-        is sent (see :meth:`SubJobConfig.validate`). ``job_id`` is optional;
+        is sent (see :meth:`SubJobConfig.validate`). A job supports zero or one
+        ``training`` sub-job and any number of ``sampling`` /
+        ``log_probability`` sub-jobs. ``job_id`` is optional;
         when omitted the server generates one. ``experiment_name`` is optional;
         when omitted the server auto-creates an experiment for the job.
+        ``hardware`` is optional (:class:`Hardware`.H200 / .B200 / .B300); when
+        set, all sub-jobs in the job run on that GPU type. Omitted defaults to
+        H200.
+        ``idle_timeout_seconds`` bounds how long the job may sit idle before the
+        server reclaims it: ``0`` disables reclamation, any other value must be
+        between 300 and 604,800. ``pending_timeout_seconds`` bounds how long the
+        job may wait for capacity before failing with ``pending_timeout``: between
+        300 and 604,800, with no disable value. Omit either to use the server
+        default, currently 30 minutes for idle and 24 hours for pending.
         """
         if not sub_jobs:
             raise ValueError("create_job requires a non-empty sub_jobs list")
+        if idle_timeout_seconds is not None:
+            if isinstance(idle_timeout_seconds, bool) or not isinstance(
+                idle_timeout_seconds, int
+            ):
+                raise ValueError("idle_timeout_seconds must be an integer")
+            if idle_timeout_seconds != 0 and not (
+                300 <= idle_timeout_seconds <= 604_800
+            ):
+                raise ValueError(
+                    "idle_timeout_seconds must be 0 or between 300 and 604800"
+                )
+        if pending_timeout_seconds is not None:
+            if isinstance(pending_timeout_seconds, bool) or not isinstance(
+                pending_timeout_seconds, int
+            ):
+                raise ValueError("pending_timeout_seconds must be an integer")
+            if not (300 <= pending_timeout_seconds <= 604_800):
+                raise ValueError(
+                    "pending_timeout_seconds must be between 300 and 604800"
+                )
         for sj in sub_jobs:
             sj.validate()
         body: dict = {"sub_job_configs": [sj.to_wire() for sj in sub_jobs]}
@@ -1340,6 +1406,12 @@ class CortexTrainingClient:
             body["job_id"] = job_id
         if experiment_name is not None:
             body["experiment_name"] = experiment_name
+        if hardware is not None:
+            body["hardware"] = _hardware_wire(hardware)
+        if idle_timeout_seconds is not None:
+            body["idle_timeout_seconds"] = idle_timeout_seconds
+        if pending_timeout_seconds is not None:
+            body["pending_timeout_seconds"] = pending_timeout_seconds
         return self.create_job_from_body(body)["job_id"]
 
     @_track_operation("create_job")
@@ -1348,12 +1420,24 @@ class CortexTrainingClient:
 
         This is useful for tooling that already has the REST JSON payload,
         while :meth:`create_job` remains the typed path for Python callers.
+
+        A job supports zero or one ``training`` sub-job and any number of
+        ``sampling`` / ``log_probability`` sub-jobs; a second training sub-job
+        raises :class:`ValueError` before the request is sent.
         """
         if not isinstance(body, dict):
             raise ValueError("create_job_from_body requires a JSON object")
         sub_job_configs = body.get("sub_job_configs")
         if not isinstance(sub_job_configs, list) or not sub_job_configs:
             raise ValueError("create_job_from_body requires a non-empty sub_job_configs list")
+        training_sub_jobs = sum(
+            1
+            for cfg in sub_job_configs
+            if isinstance(cfg, dict)
+            and str(cfg.get("job_type") or "").strip().lower() == JobType.TRAINING.value
+        )
+        if training_sub_jobs > 1:
+            raise ValueError("at most one training sub-job is supported per job")
         if body.get("debug") and not _debug_options_enabled():
             raise ValueError(
                 "create-job debug options are an internal-only capability; set "
@@ -1417,37 +1501,59 @@ class CortexTrainingClient:
         self._send("POST", f"{self._prefix}/{job_id}:cancel")
 
     @_track_operation("get_capacity")
-    def get_capacity(self) -> dict:
-        """Return the calling account's reserved GPU capacity and current usage.
+    def get_capacity(self, hardware: Hardware | str | None = None) -> dict:
+        """Return the calling account's GPU ceiling and current usage.
 
         Backed by the account-scoped endpoint ``/cortex-training/capacity``
         (not under ``/{job_id}``). The account is resolved server-side from the
         caller's session — never from a request field — so a caller can only
-        ever read its own account's capacity.
+        ever read its own account's capacity. Optional ``hardware``
+        (:class:`Hardware`.H200 / .B200 / .B300) is sent as a query parameter and
+        scopes the numbers to that GPU type; omitted defaults to H200.
 
-        The returned dict always carries all four fields. The server emits
-        proto3 JSON, which omits zero/false fields (an unreserved account's
-        response is literally ``{}``), so we fill in the documented defaults:
+        The returned dict always carries all six fields. The server emits
+        proto3 JSON, which omits zero/false fields (an account holding nothing
+        under a zero ceiling is literally ``{}``), so we fill in the documented
+        defaults:
 
-        - ``has_reservation`` (bool): whether the account has a configured GPU
-          reservation. When ``False`` the account uses shared/on-demand
-          placement and the ``*_gpus`` fields are all 0.
-        - ``reserved_gpus`` (int): total GPUs reserved for the account. The
-          server also returns a ``max_total_gpus`` ceiling that supersedes this
-          field; this method does not surface it yet.
-        - ``in_use_gpus`` (int): GPUs consumed by the account's active
-          (non-terminal) jobs.
-        - ``available_gpus`` (int): remaining capacity, floored at 0.
+        - ``has_reservation`` (bool): whether ``max_total_gpus`` is a
+          *guaranteed* commitment rather than a best-effort per-account cap.
+          When ``False`` the account draws on the shared pool, so
+          ``available_gpus`` is an upper bound.
+        - ``max_total_gpus`` (int): the account's ceiling — its commitment when
+          ``has_reservation``, else its per-account cap. ``-1`` means no
+          ceiling, ``0`` a real quota of zero, ``> 0`` the limit. This is the
+          canonical ceiling; prefer it over ``reserved_gpus``.
+        - ``reserved_gpus`` (int, **deprecated**): mirrors ``max_total_gpus``
+          when ``has_reservation`` is ``True``, else 0.
+        - ``in_use_gpus`` (int): GPUs the account holds — jobs in ``placing``,
+          ``initializing``, or ``running``. Queued work is *not* counted here;
+          it is in ``pending_gpus``.
+        - ``pending_gpus`` (int): GPUs requested by jobs still waiting for
+          capacity (``pending``). It claims quota, so it reduces
+          ``available_gpus``.
+        - ``available_gpus`` (int): what a new job could start with right now —
+          ceiling headroom capped by what is schedulable. ``0`` does not mean
+          blocked: a submit within the ceiling is still accepted and queued.
 
         See ``docs/reference/rest-api.md`` section 5.4 for the authoritative
         field list.
         """
-        resp = self._send("GET", f"{self._prefix}/capacity")
+        params = {}
+        if hardware is not None:
+            params["hardware"] = _hardware_wire(hardware)
+        resp = self._send(
+            "GET",
+            f"{self._prefix}/capacity",
+            **({"params": params} if params else {}),
+        )
         body = resp.json()
         return {
             "has_reservation": bool(body.get("has_reservation", False)),
+            "max_total_gpus": int(body.get("max_total_gpus", 0)),
             "reserved_gpus": int(body.get("reserved_gpus", 0)),
             "in_use_gpus": int(body.get("in_use_gpus", 0)),
+            "pending_gpus": int(body.get("pending_gpus", 0)),
             "available_gpus": int(body.get("available_gpus", 0)),
         }
 
@@ -1460,11 +1566,8 @@ class CortexTrainingClient:
         resp = self._send("GET", f"{self._prefix}/{job_id}/experiment-run")
         return resp.json()
 
-    def _query_sql_scalar(self, statement: str) -> Any:
-        """Execute a synchronous SQL statement and return ``data[0][0]``.
-
-        Used for ``SYSTEM$`` scalar functions (single JSON-encoded value).
-        """
+    def _query_sql_row(self, statement: str) -> list[Any]:
+        """Execute a synchronous SQL statement and return its first row."""
         resp = self._send(
             "POST",
             f"{self.base_url}/api/v2/statements",
@@ -1473,68 +1576,338 @@ class CortexTrainingClient:
         rows = resp.json().get("data")
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], list) or not rows[0]:
             raise ValueError(f"SQL query returned no rows: {statement}")
-        return rows[0][0]
+        return rows[0]
 
-    @_track_operation("fetch_execution_logs")
-    def fetch_execution_logs(self, job_id: str) -> list[dict[str, str]]:
-        """Download every log file under the job's experiment run stage.
-
-        Returns a list of ``{"sub_job_id", "filename", "s3_uri", "content"}``
-        entries, one per object found under a ``_logs/<sub_job_id>/`` subtree
-        in the run's stage. Filenames such as ``execution.jsonl`` and
-        ``server.log`` are both included; bodies are decoded as UTF-8.
-
-        Steps: ``experiment-run`` → ``SYSTEM$GET_VSTAGE_WRITE_CREDS`` →
-        ``ListObjectsV2`` (scoped by stage prefix) → ``GetObject`` per match.
-        """
+    def _experiment_run_uri(self, job_id: str) -> tuple[str, str]:
+        """Return the experiment run's ``snow://`` URI and run name."""
         run = self.get_experiment_run(job_id)
         try:
             experiment_name = run["experiment_name"]
             run_name = run["experiment_run_name"]
         except KeyError as exc:
             raise ValueError(f"experiment-run response missing field: {exc.args[0]}") from exc
-
-        run_uri = f"snow://experiment/{experiment_name}/versions/{run_name}/"
-        creds = _parse_s3_stage_credentials(
-            self._query_sql_scalar(f"SELECT SYSTEM$GET_VSTAGE_WRITE_CREDS('{run_uri}')")
-        )
-        bucket = creds["bucket"]
-        stage_prefix = creds["prefix"]
-        if stage_prefix:
-            stage_prefix += "/"
-
-        import boto3
-
-        s3 = boto3.client(
-            "s3",
-            aws_access_key_id=creds["access_key_id"],
-            aws_secret_access_key=creds["secret_access_key"],
-            aws_session_token=creds["session_token"],
-            region_name=creds["region"] or None,
+        if not isinstance(experiment_name, str) or not experiment_name:
+            raise ValueError("experiment-run response has invalid experiment_name")
+        if not isinstance(run_name, str) or not run_name:
+            raise ValueError("experiment-run response has invalid experiment_run_name")
+        return (
+            f"snow://experiment/{experiment_name}/versions/{run_name}/",
+            run_name,
         )
 
-        results: list[dict[str, str]] = []
-        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=stage_prefix):
-            for item in page.get("Contents") or []:
-                key = item.get("Key")
-                if not isinstance(key, str):
-                    continue
-                _, sep, after_logs = key.partition("/_logs/")
-                if not sep:
-                    continue
-                sub_job_id, _, filename = after_logs.partition("/")
-                if not sub_job_id or not filename:
-                    continue
-                body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+    def _open_experiment_artifact_connection(self) -> Any:
+        """Open a connector session for Snowflake experiment artifact LIST/GET."""
+        config = self._artifact_connection_config
+        if config is None:
+            raise RuntimeError(
+                "experiment artifact download requires a PAT-authenticated client"
+            )
+        user, account, role = self._query_sql_row(
+            "SELECT CURRENT_USER(), CURRENT_ACCOUNT_NAME(), CURRENT_ROLE()"
+        )
+        if not isinstance(user, str) or not user:
+            raise ValueError("SQL identity response missing current user")
+        if not isinstance(account, str) or not account:
+            raise ValueError("SQL identity response missing current account")
+
+        import snowflake.connector
+
+        kwargs: dict[str, Any] = {
+            "host": config["host"],
+            "account": account,
+            "user": user,
+            "authenticator": "PROGRAMMATIC_ACCESS_TOKEN",
+            "token": config["pat"],
+            "database": self.database,
+            "schema": self.schema,
+        }
+        if isinstance(role, str) and role:
+            kwargs["role"] = role
+        return snowflake.connector.connect(**kwargs)
+
+    @staticmethod
+    def _list_experiment_artifacts(
+        connection: Any,
+        run_uri: str,
+        run_name: str,
+        artifact_root: str,
+    ) -> list[str]:
+        """List safe run-relative file paths below ``artifact_root``."""
+        root = artifact_root.strip("/") + "/"
+        _validate_artifact_relative_path(root.removesuffix("/"))
+        cursor = connection.cursor()
+        try:
+            rows = cursor.execute(
+                f"LIST {_sql_string_literal(run_uri + root)}"
+            ).fetchall()
+        finally:
+            cursor.close()
+
+        run_prefix = f"/versions/{run_name}/"
+        paths: list[str] = []
+        for row in rows:
+            name = row[0] if row else None
+            if not isinstance(name, str) or not name.startswith(run_prefix):
+                raise ValueError(
+                    f"experiment artifact LIST returned an unexpected path: {name!r}"
+                )
+            relative_path = _validate_artifact_relative_path(
+                name.removeprefix(run_prefix)
+            )
+            if not relative_path.startswith(root):
+                raise ValueError(
+                    "experiment artifact LIST returned a file outside the "
+                    f"requested root {root!r}: {relative_path!r}"
+                )
+            paths.append(relative_path)
+        return sorted(set(paths))
+
+    @staticmethod
+    def _download_experiment_artifact(
+        connection: Any,
+        run_uri: str,
+        relative_path: str,
+        target_dir: Path,
+    ) -> Path:
+        """Download one exact experiment artifact and return its local path."""
+        relative_path = _validate_artifact_relative_path(relative_path)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_uri = target_dir.resolve().as_uri() + "/"
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                "GET "
+                f"{_sql_string_literal(run_uri + relative_path)} "
+                f"{_sql_string_literal(target_uri)}"
+            ).fetchall()
+        finally:
+            cursor.close()
+        downloaded = target_dir / PurePosixPath(relative_path).name
+        if not downloaded.is_file():
+            raise RuntimeError(
+                f"Snowflake GET did not create expected artifact {downloaded}"
+            )
+        return downloaded
+
+    @_track_operation("fetch_execution_logs")
+    def fetch_execution_logs(self, job_id: str) -> list[dict[str, str]]:
+        """Download every log file under the job's experiment run stage.
+
+        Returns a list of
+        ``{"sub_job_id", "filename", "artifact_uri", "content"}``
+        entries, one per object found under a ``_logs/<sub_job_id>/`` subtree
+        in the run's stage. Filenames such as ``execution.jsonl`` and
+        ``server.log`` are both included; bodies are decoded as UTF-8.
+
+        ``artifact_uri`` is the logical ``snow://`` URI. Files are retrieved
+        through Snowflake's supported experiment artifact ``LIST``/``GET``
+        interface; no object-store credentials are exposed to the caller.
+        """
+        run_uri, run_name = self._experiment_run_uri(job_id)
+        connection = self._open_experiment_artifact_connection()
+        try:
+            paths: list[str] = []
+            for artifact_root in ("_logs", "checkpoints/_logs"):
+                paths.extend(
+                    self._list_experiment_artifacts(
+                        connection, run_uri, run_name, artifact_root
+                    )
+                )
+
+            results: list[dict[str, str]] = []
+            with tempfile.TemporaryDirectory(prefix="cortex-training-execution-logs-") as temp:
+                temp_root = Path(temp)
+                for relative_path in sorted(set(paths)):
+                    if relative_path.startswith("_logs/"):
+                        after_logs = relative_path.removeprefix("_logs/")
+                    elif relative_path.startswith("checkpoints/_logs/"):
+                        after_logs = relative_path.removeprefix("checkpoints/_logs/")
+                    else:
+                        continue
+                    sub_job_id, separator, filename = after_logs.partition("/")
+                    if (
+                        not separator
+                        or not filename
+                        or not (
+                            sub_job_id == job_id
+                            or sub_job_id.startswith(f"{job_id}:")
+                        )
+                        or sub_job_id in {".", ".."}
+                        or "\\" in sub_job_id
+                    ):
+                        continue
+                    downloaded = self._download_experiment_artifact(
+                        connection,
+                        run_uri,
+                        relative_path,
+                        temp_root,
+                    )
+                    artifact_uri = run_uri + relative_path
+                    try:
+                        content = downloaded.read_text(encoding="utf-8")
+                    finally:
+                        downloaded.unlink(missing_ok=True)
+                    results.append(
+                        {
+                            "sub_job_id": sub_job_id,
+                            "filename": filename,
+                            "artifact_uri": artifact_uri,
+                            "content": content,
+                        }
+                    )
+            return results
+        finally:
+            connection.close()
+
+    def _download_gzip_artifacts(
+        self,
+        job_id: str,
+        output_dir: str | os.PathLike[str],
+        *,
+        artifact_name: str,
+        chunk_pattern: re.Pattern[str],
+        destination_name: str,
+        temporary_prefix: str,
+    ) -> list[dict[str, Any]]:
+        """Reconstruct staged gzip chunks into one atomic file per sub-job."""
+        run_uri, run_name = self._experiment_run_uri(job_id)
+        connection = self._open_experiment_artifact_connection()
+        root = Path(output_dir).expanduser()
+        downloads: dict[str, dict[str, Any]] = {}
+        artifact_roots = (f"_{artifact_name}", f"checkpoints/_{artifact_name}")
+        try:
+            paths_by_root = {
+                artifact_root: self._list_experiment_artifacts(
+                    connection, run_uri, run_name, artifact_root
+                )
+                for artifact_root in artifact_roots
+            }
+            chunks_by_sub_job: dict[str, dict[str, Any]] = {}
+            for artifact_root, paths in paths_by_root.items():
+                prefix = artifact_root + "/"
+                for relative_path in paths:
+                    after_root = relative_path.removeprefix(prefix)
+                    sub_job_id, separator, filename = after_root.partition("/")
+                    if (
+                        not separator
+                        or sub_job_id in {"", ".", ".."}
+                        or not (
+                            sub_job_id == job_id
+                            or sub_job_id.startswith(f"{job_id}:")
+                        )
+                        or "/" in filename
+                        or "\\" in sub_job_id
+                        or chunk_pattern.fullmatch(filename) is None
+                    ):
+                        continue
+                    chunks = chunks_by_sub_job.get(sub_job_id)
+                    if chunks is None:
+                        chunks = {"artifact_root": artifact_root, "paths": []}
+                        chunks_by_sub_job[sub_job_id] = chunks
+                    elif chunks["artifact_root"] != artifact_root:
+                        raise ValueError(
+                            f"{artifact_name} chunks for {sub_job_id!r} appear "
+                            "under multiple artifact roots"
+                        )
+                    chunks["paths"].append(relative_path)
+
+            with tempfile.TemporaryDirectory(
+                prefix=f"cortex-training-{artifact_name}-artifacts-"
+            ) as temp:
+                artifact_temp = Path(temp)
+                for sub_job_id in sorted(chunks_by_sub_job):
+                    chunk_paths = sorted(chunks_by_sub_job[sub_job_id]["paths"])
+                    destination = root / sub_job_id / destination_name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    output = tempfile.NamedTemporaryFile(
+                        mode="wb",
+                        dir=str(destination.parent),
+                        prefix=temporary_prefix,
+                        suffix=".tmp",
+                        delete=False,
+                    )
+                    state = {
+                        "destination": destination,
+                        "temporary": Path(output.name),
+                        "output": output,
+                        "chunk_count": 0,
+                        "first_path": chunk_paths[0],
+                        "last_path": chunk_paths[-1],
+                    }
+                    downloads[sub_job_id] = state
+                    for relative_path in chunk_paths:
+                        downloaded = self._download_experiment_artifact(
+                            connection,
+                            run_uri,
+                            relative_path,
+                            artifact_temp,
+                        )
+                        try:
+                            with downloaded.open("rb") as compressed:
+                                with gzip.GzipFile(fileobj=compressed, mode="rb") as source:
+                                    shutil.copyfileobj(
+                                        source,
+                                        output,
+                                        length=_STREAM_COPY_BUFFER_BYTES,
+                                    )
+                        finally:
+                            downloaded.unlink(missing_ok=True)
+                        state["chunk_count"] += 1
+
+            results: list[dict[str, Any]] = []
+            for sub_job_id in sorted(downloads):
+                state = downloads[sub_job_id]
+                output = state["output"]
+                output.flush()
+                os.fsync(output.fileno())
+                output.close()
+                os.replace(state["temporary"], state["destination"])
                 results.append(
                     {
                         "sub_job_id": sub_job_id,
-                        "filename": filename,
-                        "s3_uri": f"s3://{bucket}/{key}",
-                        "content": body.decode("utf-8"),
+                        "filename": state["destination"].name,
+                        "saved_path": str(state["destination"]),
+                        "chunk_count": state["chunk_count"],
+                        "first_artifact_uri": run_uri + state["first_path"],
+                        "last_artifact_uri": run_uri + state["last_path"],
                     }
                 )
-        return results
+            return results
+        except BaseException:
+            for state in downloads.values():
+                output = state["output"]
+                if not output.closed:
+                    output.close()
+                state["temporary"].unlink(missing_ok=True)
+            raise
+        finally:
+            connection.close()
+
+    def download_stdout_logs(
+        self, job_id: str, output_dir: str | os.PathLike[str]
+    ) -> list[dict[str, Any]]:
+        """Reconstruct sealed console artifacts into one file per sub-job."""
+        return self._download_gzip_artifacts(
+            job_id,
+            output_dir,
+            artifact_name="stdout",
+            chunk_pattern=_STDOUT_CHUNK_RE,
+            destination_name="stdout.log",
+            temporary_prefix=".stdout-",
+        )
+
+    def download_metrics(
+        self, job_id: str, output_dir: str | os.PathLike[str]
+    ) -> list[dict[str, Any]]:
+        """Reconstruct staged GPU metric chunks into one JSONL file per sub-job."""
+        return self._download_gzip_artifacts(
+            job_id,
+            output_dir,
+            artifact_name="metrics",
+            chunk_pattern=_GPU_METRICS_CHUNK_RE,
+            destination_name="gpu.jsonl",
+            temporary_prefix=".gpu-metrics-",
+        )
 
     # ─── Data-plane async operations ─────────────────────────────────────
 
@@ -1874,9 +2247,9 @@ class CortexTrainingClient:
 
         **When to use target_sub_job_id:**
 
-        Use this when working with sessions that have multiple training
-        sub-jobs (e.g., multi-DP configurations) and you need to load
-        checkpoints into a specific sub-job rather than the default.
+        A job has at most one training sub-job, so omitting this routes to that
+        sub-job. Pass it when you want explicit routing rather than relying on
+        the server's default resolution.
 
         **Discovering sub-job IDs:**
 

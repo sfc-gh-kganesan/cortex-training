@@ -13,7 +13,12 @@ Check current capacity after installing and authenticating:
 
 ```bash
 cortex-training capacity
+cortex-training capacity --hardware B200
 ```
+
+Omitting `--hardware` reports every GPU type. Pass the same `--hardware` value
+you will set on the job; capacity is per hardware type. See
+[GPU hardware](../concepts/hardware.md).
 
 Model-specific GPU requirements are not yet fully validated. Treat recipe
 defaults as starting configurations, not guaranteed minimums.

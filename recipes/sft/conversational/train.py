@@ -100,6 +100,23 @@ def job_body(config: Config) -> dict:
     return body
 
 
+def _uses_chunked_logprob_loss(training: dict[str, Any]) -> bool:
+    token_chunk_size = training.get("fused_lm_head_token_chunk_size")
+    if token_chunk_size is None:
+        token_chunk_size = (training.get("prime_rl") or {}).get(
+            "fused_lm_head_token_chunk_size"
+        )
+    return isinstance(token_chunk_size, int) and not isinstance(token_chunk_size, bool)
+
+
+def _chunked_causal_cross_entropy() -> dict[str, Any]:
+    return {
+        "loss_fn": "causal_cross_entropy",
+        "post": ["compute_logprobs"],
+        "config": {},
+    }
+
+
 def resolve_chat_dataset(dataset: str) -> str:
     builtin = BUILTIN_CHAT_DATASETS.get(dataset)
     if builtin is not None:
@@ -156,6 +173,7 @@ def main(config: Config):
     learning_rate = float((training.get("optimizer") or {}).get("lr"))
     model_provider = str(training.get("model_provider") or "huggingface")
     model_name = training_sub.get("model_name")
+    chunked_logprob_loss = _uses_chunked_logprob_loss(training)
 
     ml_logger = ml_log.setup_logging(
         log_dir=config.log_path,
@@ -176,7 +194,9 @@ def main(config: Config):
         renderer_name,
         config.enable_thinking,
     )
-    next_token_labels = use_next_token_labels(model_provider)
+    # The processing loss consumes logprobs aligned to logits[:, i] predicting
+    # input_ids[:, i + 1], the same alignment used by the PrimeRL SFT head.
+    next_token_labels = use_next_token_labels(model_provider) or chunked_logprob_loss
 
     logger.info("Loading dataset...")
     train_dataset = load_chat_dataset(
@@ -215,13 +235,25 @@ def main(config: Config):
                 )
                 for row in batch_rows
             ]
-            kwargs, _ = collate(
+            kwargs, context = collate(
                 sequences,
                 pad_token_id=pad_token_id,
                 max_seq_len=max_seq_len,
                 pad_to_max_seq_len=config.pad_to_max_length,
+                with_rl_context=chunked_logprob_loss,
             )
-            fwd_bwd_result, step_result = forward_backward_step(client, job_id, kwargs, learning_rate=current_lr)
+            fwd_bwd_result, step_result = forward_backward_step(
+                client,
+                job_id,
+                kwargs,
+                context=context or None,
+                learning_rate=current_lr,
+                processing=(
+                    _chunked_causal_cross_entropy()
+                    if chunked_logprob_loss
+                    else None
+                ),
+            )
 
             train_loss = float(fwd_bwd_result["avg_loss"])
             metrics.update(fwd_bwd_result.get("metrics") or {})

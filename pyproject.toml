@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortex-training"
-version = "0.0.2"
+version = "0.0.3"
 description = "Python SDK and command-line tools for Cortex Training"
 readme = "README.md"
 # 3.10 is the real floor: torch, safetensors and tenacity all require >=3.10,
@@ -14,7 +14,7 @@ license = {text = "Apache-2.0"}
 dependencies = [
     "requests>=2.28.0",
     "tenacity>=8.2.0",
-    "boto3",
+    "snowflake-connector-python>=3.15.0",
     "torch",
     "safetensors",
     "textual>=0.50"
@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 cortex-training = "cortex_training.cli:main"
+ct = "cortex_training.cli:main"
 
 [project.optional-dependencies]
 dev = [

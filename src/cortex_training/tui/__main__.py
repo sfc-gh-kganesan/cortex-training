@@ -19,7 +19,7 @@ Connection handling is delegated to ``cortex_training._cli`` so the TUI shares t
 SDK's auth surface: it honours ``cortex-training login`` state, ``--config`` /
 ``CORTEX_TRAINING_CONFIG``, the ``CORTEX_TRAINING_*`` / ``SNOWFLAKE_*`` env vars, and explicit
 ``--base-url`` (local/mock) or ``--host`` + ``--pat`` flags, exactly like the
-CLI. Run ``cortex-training login --config config.json`` once and then just
+CLI. Run ``cortex-training login config.json`` once and then just
 ``cortex-training tui JOB_ID``.
 """
 
@@ -92,7 +92,7 @@ def run(argv=None, *, prog: str = "cortex-training tui") -> int:
         parser.error("provide --database or set CORTEX_TRAINING_DATABASE/SNOWFLAKE_DATABASE")
     if args.base_url is None and (args.host is None or args.pat is None):
         parser.error(
-            "no connection configured: run 'cortex-training login --config config.json', "
+            "no connection configured: run 'cortex-training login config.json', "
             "set CORTEX_TRAINING_CONFIG, pass --config config.json, or pass "
             "--base-url (local/mock) or --host + --pat"
         )

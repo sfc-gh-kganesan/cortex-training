@@ -20,6 +20,8 @@ from __future__ import annotations
 import io
 import json
 
+import pytest
+
 import cortex_training._cli as cli
 
 
@@ -48,8 +50,14 @@ class FakeClient:
         self.weight_sync_sub_job_id = None
         self.weight_sync_sub_job_type = None
         self.capacity_requested = False
+        self.capacity_hardware = None
+        self.capacity_hardware_requests = []
         self.checkpoints_job_id = None
         self.jobs = None
+        self.stdout_log_job_id = None
+        self.stdout_log_output_dir = None
+        self.metrics_job_id = None
+        self.metrics_output_dir = None
 
     def create_job_from_body(self, body):
         self.submitted_body = body
@@ -78,13 +86,21 @@ class FakeClient:
     def cancel_job(self, job_id):
         self.cancelled_job_id = job_id
 
-    def get_capacity(self):
+    def get_capacity(self, hardware=None):
         self.capacity_requested = True
+        self.capacity_hardware = hardware
+        self.capacity_hardware_requests.append(hardware)
         return {
             "has_reservation": True,
+            "max_total_gpus": 64,
             "reserved_gpus": 64,
             "in_use_gpus": 8,
-            "available_gpus": 56,
+            "pending_gpus": 16,
+            "available_gpus": {
+                "H200": 40,
+                "B200": 24,
+                "B300": 0,
+            }.get(hardware, 40),
         }
 
     def forward_backward(self, job_id, payload):
@@ -157,21 +173,55 @@ class FakeClient:
             {
                 "sub_job_id": f"{job_id}:training:0",
                 "filename": "execution.jsonl",
-                "s3_uri": f"s3://bucket/stage/versions/v1/checkpoints/_logs/{job_id}:training:0/execution.jsonl",
+                "artifact_uri": f"snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/{job_id}:training:0/execution.jsonl",
                 "content": '{"a":1}\n',
             },
             {
                 "sub_job_id": f"{job_id}:training:0",
                 "filename": "server.log",
-                "s3_uri": f"s3://bucket/stage/versions/v1/checkpoints/_logs/{job_id}:training:0/server.log",
+                "artifact_uri": f"snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/{job_id}:training:0/server.log",
                 "content": "server line\n",
             },
             {
                 "sub_job_id": f"{job_id}:sampling:0",
                 "filename": "execution.jsonl",
-                "s3_uri": f"s3://bucket/stage/versions/v1/checkpoints/_logs/{job_id}:sampling:0/execution.jsonl",
+                "artifact_uri": f"snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/{job_id}:sampling:0/execution.jsonl",
                 "content": '{"b":2}\n',
             },
+        ]
+
+    def download_stdout_logs(self, job_id, output_dir):
+        self.stdout_log_job_id = job_id
+        self.stdout_log_output_dir = output_dir
+        path = output_dir / f"{job_id}:training:0" / "stdout.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("console\n", encoding="utf-8")
+        return [
+            {
+                "sub_job_id": f"{job_id}:training:0",
+                "filename": "stdout.log",
+                "saved_path": str(path),
+                "chunk_count": 1,
+                "first_artifact_uri": "snow://experiment/first.gz",
+                "last_artifact_uri": "snow://experiment/first.gz",
+            }
+        ]
+
+    def download_metrics(self, job_id, output_dir):
+        self.metrics_job_id = job_id
+        self.metrics_output_dir = output_dir
+        path = output_dir / f"{job_id}:training:0" / "gpu.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"gpu_utilization":0.5}\n', encoding="utf-8")
+        return [
+            {
+                "sub_job_id": f"{job_id}:training:0",
+                "filename": "gpu.jsonl",
+                "saved_path": str(path),
+                "chunk_count": 1,
+                "first_artifact_uri": "snow://experiment/first.gz",
+                "last_artifact_uri": "snow://experiment/first.gz",
+            }
         ]
 
 
@@ -277,6 +327,43 @@ def test_submit_dry_run_does_not_require_connection(tmp_path, monkeypatch):
 
     assert rc == 0
     assert json.loads(stdout.getvalue())["job_id"] == "dry"
+
+
+def _write_two_training_job(tmp_path):
+    path = tmp_path / "two-training.json"
+    training = {
+        "job_type": "training",
+        "model_name": "gpt2",
+        "training_config": {"max_seq_len": 128, "train_batch_size": 1, "n_gpus": 2},
+    }
+    path.write_text(json.dumps({"sub_job_configs": [training, training]}), encoding="utf-8")
+    return path
+
+
+def test_submit_rejects_two_training_sub_jobs(tmp_path):
+    instances = []
+    stderr = io.StringIO()
+    path = _write_two_training_job(tmp_path)
+
+    rc = cli.main(
+        _base_args() + ["submit", str(path)],
+        client_factory=_factory(instances),
+        stderr=stderr,
+    )
+
+    assert rc == 1
+    assert "at most one training sub-job is supported per job" in stderr.getvalue()
+    assert instances[0].submitted_body is None
+
+
+def test_submit_dry_run_rejects_two_training_sub_jobs(tmp_path):
+    stderr = io.StringIO()
+    path = _write_two_training_job(tmp_path)
+
+    rc = cli.main(["submit", str(path), "--dry-run"], stderr=stderr)
+
+    assert rc == 1
+    assert "at most one training sub-job is supported per job" in stderr.getvalue()
 
 
 def test_list_prints_jobs_with_status_filter():
@@ -418,12 +505,59 @@ def test_capacity_prints_account_gpu_usage():
 
     assert rc == 0
     assert instances[0].capacity_requested is True
+    assert instances[0].capacity_hardware_requests == ["H200", "B200", "B300"]
     assert json.loads(stdout.getvalue()) == {
-        "has_reservation": True,
-        "reserved_gpus": 64,
-        "in_use_gpus": 8,
-        "available_gpus": 56,
+        "capacity_by_hardware": {
+            "H200": {
+                "has_reservation": True,
+                "max_total_gpus": 64,
+                "reserved_gpus": 64,
+                "in_use_gpus": 8,
+                "pending_gpus": 16,
+                "available_gpus": 40,
+            },
+            "B200": {
+                "has_reservation": True,
+                "max_total_gpus": 64,
+                "reserved_gpus": 64,
+                "in_use_gpus": 8,
+                "pending_gpus": 16,
+                "available_gpus": 24,
+            },
+            "B300": {
+                "has_reservation": True,
+                "max_total_gpus": 64,
+                "reserved_gpus": 64,
+                "in_use_gpus": 8,
+                "pending_gpus": 16,
+                "available_gpus": 0,
+            },
+        },
     }
+
+
+def test_capacity_passes_hardware():
+    instances = []
+    stdout = io.StringIO()
+
+    rc = cli.main(
+        _base_args() + ["capacity", "--hardware", "B300"],
+        client_factory=_factory(instances),
+        stdout=stdout,
+    )
+
+    assert rc == 0
+    assert instances[0].capacity_hardware == "B300"
+    assert instances[0].capacity_hardware_requests == ["B300"]
+
+
+def test_capacity_rejects_unknown_hardware():
+    with pytest.raises(SystemExit):
+        cli.main(
+            _base_args() + ["capacity", "--hardware", "A10"],
+            client_factory=_factory([]),
+            stdout=io.StringIO(),
+        )
 
 
 def test_cancel_prints_confirmation():
@@ -924,22 +1058,69 @@ def test_download_log_writes_each_log_under_sub_job_dir(tmp_path):
         {
             "sub_job_id": "job-1:training:0",
             "filename": "execution.jsonl",
-            "s3_uri": "s3://bucket/stage/versions/v1/checkpoints/_logs/job-1:training:0/execution.jsonl",
+            "artifact_uri": "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/job-1:training:0/execution.jsonl",
             "saved_path": str(training_dir / "execution.jsonl"),
         },
         {
             "sub_job_id": "job-1:training:0",
             "filename": "server.log",
-            "s3_uri": "s3://bucket/stage/versions/v1/checkpoints/_logs/job-1:training:0/server.log",
+            "artifact_uri": "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/job-1:training:0/server.log",
             "saved_path": str(training_dir / "server.log"),
         },
         {
             "sub_job_id": "job-1:sampling:0",
             "filename": "execution.jsonl",
-            "s3_uri": "s3://bucket/stage/versions/v1/checkpoints/_logs/job-1:sampling:0/execution.jsonl",
+            "artifact_uri": "snow://experiment/DB.SCH.EXP/versions/RUN_ABC/checkpoints/_logs/job-1:sampling:0/execution.jsonl",
             "saved_path": str(sampling_dir / "execution.jsonl"),
         },
     ]
+
+
+def test_download_log_stdout_routes_to_reconstruction(tmp_path):
+    stdout = io.StringIO()
+    client = FakeClient()
+
+    rc = cli.main(
+        _base_args()
+        + [
+            "download-log",
+            "job-1",
+            "--log-type",
+            "stdout",
+            "--output-dir",
+            str(tmp_path),
+        ],
+        client_factory=lambda _: client,
+        stdout=stdout,
+    )
+
+    assert rc == 0
+    assert client.stdout_log_job_id == "job-1"
+    assert client.stdout_log_output_dir == tmp_path
+    assert (tmp_path / "job-1:training:0" / "stdout.log").read_text() == "console\n"
+    assert json.loads(stdout.getvalue())["logs"][0]["filename"] == "stdout.log"
+
+
+def test_download_metrics_defaults_to_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    stdout = io.StringIO()
+    client = FakeClient()
+
+    rc = cli.main(
+        _base_args() + ["download-metrics", "job-1"],
+        client_factory=lambda _: client,
+        stdout=stdout,
+    )
+
+    assert rc == 0
+    assert client.metrics_job_id == "job-1"
+    assert client.metrics_output_dir == tmp_path
+    assert (tmp_path / "job-1:training:0" / "gpu.jsonl").read_text() == (
+        '{"gpu_utilization":0.5}\n'
+    )
+    payload = json.loads(stdout.getvalue())
+    assert payload["job_id"] == "job-1"
+    assert payload["metrics"][0]["filename"] == "gpu.jsonl"
 
 
 def test_http_errors_include_response_details():
@@ -1135,7 +1316,8 @@ def test_invalid_config_value_type_returns_error(tmp_path):
     assert "config base_url must be a string" in stderr.getvalue()
 
 
-def test_login_persists_config_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize("config_flags", [[], ["--config"]])
+def test_login_persists_config_path(tmp_path, monkeypatch, config_flags):
     login_state = tmp_path / "login.json"
     config = _write_config(
         tmp_path,
@@ -1144,7 +1326,7 @@ def test_login_persists_config_path(tmp_path, monkeypatch):
     monkeypatch.setenv("CORTEX_TRAINING_LOGIN_FILE", str(login_state))
     stdout = io.StringIO()
 
-    rc = cli.main(["login", "--config", str(config)], stdout=stdout)
+    rc = cli.main(["login"] + config_flags + [str(config)], stdout=stdout)
 
     assert rc == 0
     saved = json.loads(login_state.read_text(encoding="utf-8"))
@@ -1226,13 +1408,14 @@ def test_direct_connection_flags_do_not_read_login_state(tmp_path, monkeypatch):
     assert rc == 0
 
 
-def test_login_rejects_invalid_config(tmp_path, monkeypatch):
+@pytest.mark.parametrize("config_flags", [[], ["--config"]])
+def test_login_rejects_invalid_config(tmp_path, monkeypatch, config_flags):
     login_state = tmp_path / "login.json"
     config = _write_config(tmp_path, {"typo": "value"})
     monkeypatch.setenv("CORTEX_TRAINING_LOGIN_FILE", str(login_state))
     stderr = io.StringIO()
 
-    rc = cli.main(["login", "--config", str(config)], stderr=stderr)
+    rc = cli.main(["login"] + config_flags + [str(config)], stderr=stderr)
 
     assert rc == 1
     assert not login_state.exists()

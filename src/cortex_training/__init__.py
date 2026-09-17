@@ -22,6 +22,7 @@ from .client import ChunkGroupConflictError
 from .client import ChunkGroupError
 from .client import ChunkGroupRestartError
 from .client import CortexTrainingClient
+from .client import Hardware
 from .client import InferenceConfig
 from .client import JobType
 from .client import SubJobConfig
@@ -42,6 +43,7 @@ __all__ = [
     "TrainingConfig",
     "InferenceConfig",
     "JobType",
+    "Hardware",
     "wire",
     "__version__",
 ]

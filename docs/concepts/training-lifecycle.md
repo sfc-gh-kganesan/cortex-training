@@ -11,5 +11,6 @@ A typical Cortex Training workflow has five stages:
 Supervised fine-tuning normally needs one training sub-job. Reinforcement
 learning commonly combines training and sampling sub-jobs in one job.
 
-See [jobs and sub-jobs](jobs-and-subjobs.md) and
+See [jobs and sub-jobs](jobs-and-subjobs.md),
+[GPU hardware](hardware.md), and
 [checkpoints](checkpoints.md) for the underlying resource model.

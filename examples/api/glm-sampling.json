@@ -2,12 +2,13 @@
   "sub_job_configs": [
     {
       "inference_config": {
-        "gpu_memory_utilization": 0.85,
-        "max_seq_len": 32768,
-        "n_gpus": 8,
+        "gpu_memory_utilization": 0.9,
+        "max_seq_len": 1048576,
+        "n_gpus": 16,
         "vllm_config": {
           "quantization": "fp8",
-          "tensor_parallel_size": 8
+          "tensor_parallel_size": 16,
+          "kv_cache_dtype": "fp8_ds_mla"
         }
       },
       "job_type": "sampling",

@@ -24,8 +24,11 @@ Shipped SFT configs:
 | `configs/qwen36_35b_a3b_full.json` | `Qwen/Qwen3.6-35B-A3B` | full-parameter |
 | `configs/qwen36_35b_a3b_lora.json` | `Qwen/Qwen3.6-35B-A3B` | LoRA |
 
-Copy one and edit `peft_config.r` / `lora_alpha` / `target_modules` to change the
-adapter. The recipe README documents the whole
+Copy one and edit `peft_config.r` and `lora_alpha` to change the adapter. For
+dense Qwen models, you can also adjust `target_modules`. Keep the shipped
+attention-only target list for `Qwen/Qwen3.6-35B-A3B`: its PrimeRL backend does
+not yet support LoRA on routed experts, and Hugging Face MLP target names are
+no-ops. The recipe README documents the whole
 [job-config shape](../../../recipes/sft/conversational/README.md#job-config-json).
 
 QLoRA is not implemented: there are no quantization settings in the recipe or in

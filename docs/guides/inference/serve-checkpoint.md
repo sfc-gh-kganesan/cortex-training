@@ -17,6 +17,6 @@ independent, so the training job can be cancelled once the checkpoint is saved.
 
 GPU count and vLLM settings live in the job-config JSON under
 `recipes/inference/configs/`. For the equivalent raw client calls, see
-[Start Sampling From A Training Checkpoint](../../reference/cli.md#start-sampling-from-a-training-checkpoint).
+[Start sampling from saved weights](../../reference/rest-api.md#134-start-sampling-from-saved-weights).
 
 Readiness checks, scaling and teardown are not yet documented.

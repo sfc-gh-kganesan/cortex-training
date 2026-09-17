@@ -36,9 +36,15 @@ the file outside the repository and do not commit it.
 Validate and store the config path:
 
 ```bash
-cortex-training login --config ~/cortex-training-config.json
+cortex-training login ~/cortex-training-config.json
 cortex-training capacity
 ```
+
+Login also accepts `cortex-training login --config ~/cortex-training-config.json`.
+Use either the positional path or `--config`, not both.
+
+`capacity` with no `--hardware` lists every GPU type. See
+[GPU hardware](../concepts/hardware.md).
 
 See the [CLI reference](../reference/cli.md) for environment variables,
 alternative server targets, and one-command overrides.

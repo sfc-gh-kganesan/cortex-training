@@ -19,11 +19,15 @@ python -m recipes.sft.conversational.train \
 ```
 
 The default job config, `configs/qwen3_8b_full.json`, requests four GPUs and
-runs full-parameter training, so check capacity first. GPU count, batch shape,
+runs full-parameter training, so check capacity first. It omits `hardware`, so
+the job lands on H200. Add `"hardware": "B200"` (or `B300`) at the top level of
+that JSON to use another pool; check
+`cortex-training capacity --hardware B200` first. GPU count, batch shape,
 sequence length and LoRA all live in that JSON rather than on the command line --
 pass a different one with `job_config=`, for example
 `job_config=configs/qwen3_8b_lora.json` for the lighter LoRA path. See
-[sizing and batching](../concepts/sizing-and-batching.md).
+[sizing and batching](../concepts/sizing-and-batching.md) and
+[GPU hardware](../concepts/hardware.md).
 
 For a longer run, dataset changes, dense training, and MoE configuration, see
 the [conversational SFT recipe](../../recipes/sft/conversational/README.md).
