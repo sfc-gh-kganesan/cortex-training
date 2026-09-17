@@ -39,15 +39,19 @@ cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
 
 ## Configure
 
-SkyRL's launcher reads the environment rather than the CLI login state, so
-export the same four values from your connection file:
+SkyRL's launcher runs in an isolated interpreter that reads the environment, not
+the CLI login state. Export the same four values out of the config file you just
+logged in with:
 
 ```bash
-export ARCTIC_CORTEX_HOST=ACCOUNT.snowflakecomputing.com
-export ARCTIC_CORTEX_DATABASE=CORTEX_TRAINING_DB
-export ARCTIC_CORTEX_SCHEMA=PUBLIC
-export ARCTIC_CORTEX_PAT=YOUR_PROGRAMMATIC_ACCESS_TOKEN
+cfg=~/cortex-training-config.json
+export ARCTIC_CORTEX_HOST=$(jq -r .host "$cfg")
+export ARCTIC_CORTEX_DATABASE=$(jq -r .database "$cfg")
+export ARCTIC_CORTEX_SCHEMA=$(jq -r .schema "$cfg")
+export ARCTIC_CORTEX_PAT=$(jq -r .pat "$cfg")
 ```
+
+Without `jq`, copy the four values across by hand.
 
 ## Run
 
