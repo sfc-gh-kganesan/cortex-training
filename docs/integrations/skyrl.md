@@ -39,19 +39,18 @@ cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
 
 ## Configure
 
-SkyRL's launcher runs in an isolated interpreter that reads the environment, not
-the CLI login state. Export the same four values out of the config file you just
-logged in with:
+SkyRL's trainer runs in an isolated interpreter, which inherits the environment
+but not the CLI login. Give it the same four values from your connection file:
 
 ```bash
-cfg=~/cortex-training-config.json
-export ARCTIC_CORTEX_HOST=$(jq -r .host "$cfg")
-export ARCTIC_CORTEX_DATABASE=$(jq -r .database "$cfg")
-export ARCTIC_CORTEX_SCHEMA=$(jq -r .schema "$cfg")
-export ARCTIC_CORTEX_PAT=$(jq -r .pat "$cfg")
+export ARCTIC_CORTEX_HOST=ACCOUNT.snowflakecomputing.com
+export ARCTIC_CORTEX_DATABASE=CORTEX_TRAINING_DB
+export ARCTIC_CORTEX_SCHEMA=PUBLIC
+export ARCTIC_CORTEX_PAT=YOUR_PROGRAMMATIC_ACCESS_TOKEN
 ```
 
-Without `jq`, copy the four values across by hand.
+To avoid pasting the token, read it out of the file instead:
+`export ARCTIC_CORTEX_PAT=$(jq -r .pat ~/cortex-training-config.json)`.
 
 ## Run
 
@@ -101,7 +100,9 @@ continue from the last checkpoint:
 bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh trainer.resume_mode=latest
 ```
 
-Any argument you pass is forwarded to the trainer.
+Any argument you pass is forwarded to the trainer. From a new terminal,
+re-export `SKYRL_HOME` and the four `ARCTIC_CORTEX_*` values first; the dataset
+and checkpoints live under `$HOME` and are still there.
 
 ## More detail
 
