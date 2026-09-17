@@ -10,8 +10,14 @@ rather than this client's.
 
 ## Prerequisites
 
-A Cortex account with a PAT, a database and schema, and capacity for 8 GPUs:
-4 for training and 4 for sampling. Check with `cortex-training capacity`.
+A Cortex account with capacity for 8 GPUs: 4 for training and 4 for sampling.
+Follow [connection setup](../getting-started/setup.md) to create
+`~/cortex-training-config.json` and log in, then confirm capacity:
+
+```bash
+cortex-training login ~/cortex-training-config.json
+cortex-training capacity
+```
 
 The driver machine needs no GPU, about 16 GB of free RAM, and a few gigabytes
 of disk for the `uv` cache. Ray reports too little memory as an OOM kill during
@@ -33,11 +39,14 @@ cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
 
 ## Configure
 
+SkyRL's launcher reads the environment rather than the CLI login state, so
+export the same four values from your connection file:
+
 ```bash
-export ARCTIC_CORTEX_HOST=<account>.<region>.snowflakecomputing.com
-export ARCTIC_CORTEX_DATABASE=<db>
-export ARCTIC_CORTEX_SCHEMA=<schema>
-export ARCTIC_CORTEX_PAT=<pat>
+export ARCTIC_CORTEX_HOST=ACCOUNT.snowflakecomputing.com
+export ARCTIC_CORTEX_DATABASE=CORTEX_TRAINING_DB
+export ARCTIC_CORTEX_SCHEMA=PUBLIC
+export ARCTIC_CORTEX_PAT=YOUR_PROGRAMMATIC_ACCESS_TOKEN
 ```
 
 ## Run
