@@ -31,11 +31,6 @@ git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
 cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
 ```
 
-SkyRL needs a checkout rather than the wheel because the launcher dispatches
-from `integrations/arctic_rl/`, which the wheel does not ship. There is no
-environment to create: the launcher resolves its own dependencies with
-`uv run --isolated` and builds `skyrl` from `$SKYRL_HOME`.
-
 ## Configure
 
 ```bash
