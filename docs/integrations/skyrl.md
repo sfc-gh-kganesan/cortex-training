@@ -62,9 +62,21 @@ dataset takes two to tokenize, and the eval that runs before training takes
 four. The first training step lands around twenty minutes in on a fresh
 machine, and around fifteen after that, once `uv` serves the wheels from cache.
 
-Qwen3-0.6B at the shipped defaults runs one epoch of 233 steps in about two
-hours. Held-out `eval/all/pass_at_1` should climb steadily over the
-1319-example test set; we measured 0.3033 to 0.7521.
+Qwen3-0.6B at the shipped defaults runs one epoch of 233 steps in two to three
+hours, depending on how busy Cortex is. Held-out `eval/all/pass_at_1` should
+climb steadily over the 1319-example test set; we measured 0.3033 to 0.7521.
+
+## If a run dies
+
+Long runs do die, usually on a Cortex timeout. The launcher checkpoints every
+ten steps but starts from scratch by default, so resume from the last one:
+
+```bash
+bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh trainer.resume_mode=latest
+```
+
+Anything you pass is forwarded to the trainer, so the same trick works for any
+other override.
 
 ## Training your own config on Cortex
 
