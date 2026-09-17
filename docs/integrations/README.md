@@ -1,11 +1,10 @@
 # Integrations
 
-External projects that drive training on Cortex Training.
+External projects that train against Cortex Training.
 
-**[SkyRL](skyrl.md)** — SkyRL's GRPO trainer and entry point drive the run,
-Cortex supplies the training and sampling sub-jobs, and the driver stays on CPU.
-The recipe lives in the Arctic Platform repository; nothing under `recipes/`
-here runs it.
+- [SkyRL](skyrl.md): runs GRPO with its trainer on a CPU driver and training
+  and sampling in Cortex sub-jobs. The GSM8K example lives in the Arctic
+  Platform repository.
 
-For framework-driven RL more generally, see the
+For RL using this repository's own recipes, see the
 [reinforcement learning guide](../guides/training/reinforcement-learning.md).
