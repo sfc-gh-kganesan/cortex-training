@@ -39,9 +39,6 @@ cd Arctic-Platform/recipes/rl/skyrl/simple_gsm8k_cortex
 
 ## Configure
 
-SkyRL's trainer runs in an isolated interpreter, which inherits the environment
-but not the CLI login. Read the connection out of the file you logged in with:
-
 ```bash
 cfg=~/cortex-training-config.json
 export ARCTIC_CORTEX_HOST=$(jq -r .host "$cfg")
