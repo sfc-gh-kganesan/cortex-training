@@ -13,7 +13,7 @@ the Cortex Training client.
   [reinforcement learning](guides/training/reinforcement-learning.md), plus the
   [runnable recipes](../recipes/README.md).
 - Framework users: see the [integrations index](integrations/README.md) for
-  external projects that train against Cortex.
+  RL frameworks integrated with Cortex.
 - Operators: see [job management](guides/operations/manage-jobs.md) and
   [logs and metrics](guides/operations/logs-and-metrics.md).
 - Client developers: use the [CLI reference](reference/cli.md),

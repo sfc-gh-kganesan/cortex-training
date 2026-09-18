@@ -84,7 +84,7 @@ starting a run. Browse the [recipe index](recipes/README.md) for all workflows.
 - [REST API](docs/reference/rest-api.md)
 - [Model and training-method compatibility](docs/reference/model-compatibility.md)
 - [Job management and cluster status](docs/guides/operations/manage-jobs.md)
-- [External framework integrations](docs/integrations/README.md)
+- [RL framework integrations](docs/integrations/README.md)
 
 ## Development
 
