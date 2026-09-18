@@ -1,6 +1,6 @@
 # Integrations
 
-External projects that train against Cortex Training.
+RL frameworks integrated with Cortex Training.
 
 - [SkyRL](skyrl.md): runs GRPO with its trainer on a CPU driver and training
   and sampling in Cortex sub-jobs. The GSM8K example lives in the Arctic
