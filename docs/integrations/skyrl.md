@@ -93,16 +93,18 @@ means the learning rate is too high.
 
 ## Resume a stopped run
 
-The launcher checkpoints every ten steps but starts fresh by default. To
-continue from the last checkpoint:
+Checkpoints land every ten steps under `~/checkpoints`, but the launcher starts
+fresh by default. To continue from the last one:
 
 ```bash
 bash run_qwen3_0.6b_gsm8k_grpo_cortex.sh trainer.resume_mode=latest
 ```
 
-Any argument you pass is forwarded to the trainer. From a new terminal,
-re-export `SKYRL_HOME` and the four `ARCTIC_CORTEX_*` values first; the dataset
-and checkpoints live under `$HOME` and are still there.
+Arguments are forwarded to the trainer, so this overrides the default. From a
+new terminal, re-export `SKYRL_HOME` and the four `ARCTIC_CORTEX_*` values
+first; the dataset and checkpoints are still on disk. The reload itself is
+unverified here: the checkpoints are written, but no Cortex run has been
+restarted from one.
 
 ## More detail
 
