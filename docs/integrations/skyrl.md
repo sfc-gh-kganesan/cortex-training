@@ -78,14 +78,6 @@ roughly:
 | 100 | 0.72 |
 | 120 | 0.73 |
 
-A full epoch reaches about 0.75. Most of the gain arrives in the first 40
-steps; after that the curve flattens.
-
-Two per-step metrics are worth watching. Training reward rises from about 0.25
-to 0.75 over the same span. Policy entropy falls from about 0.53 to 0.38, which
-is the policy sharpening as it learns; entropy collapsing toward zero instead
-means the learning rate is too high.
-
 ## Resume a stopped run
 
 Checkpoints land every ten steps under `~/checkpoints`, but the launcher starts
