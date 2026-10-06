@@ -20,11 +20,17 @@ the wire shape and the frame arithmetic without a Cortex job.
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
 import asyncio
 import math
 from types import SimpleNamespace
 
-import pytest
 import torch
 
 from cortex_training.integrations.tinker.cortex import CortexTinkerBackend

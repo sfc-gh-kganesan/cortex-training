@@ -28,13 +28,15 @@ import pytest_asyncio
 
 
 def pytest_collection_modifyitems(items) -> None:
-    """Mark this directory's coroutine tests for pytest-asyncio.
+    """Mark Tinker coroutine tests for pytest-asyncio.
 
-    They are written in ``asyncio_mode=auto`` style. Setting that mode in the
-    root ``pyproject.toml`` would change collection for the whole repo, so the
-    marker is applied here instead.
+    They are written in ``asyncio_mode=auto`` style. Setting that mode in
+    ``pyproject.toml`` would change collection for the whole repo, and the
+    other suites keep async work inside sync tests.
     """
     for item in items:
+        if "test_tinker_" not in item.nodeid:
+            continue
         if inspect.iscoroutinefunction(getattr(item, "function", None)):
             item.add_marker(pytest.mark.asyncio)
 

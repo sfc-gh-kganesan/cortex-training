@@ -17,9 +17,14 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
+import json
 
 from cortex_training.integrations.tinker.router import ClientConfigResponse
 from cortex_training.integrations.tinker.router import CreateModelRequest

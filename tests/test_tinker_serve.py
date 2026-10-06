@@ -15,10 +15,15 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
 import json
 from types import SimpleNamespace
-
-import pytest
 
 from cortex_training.integrations.tinker.router import LoraConfig
 from cortex_training.integrations.tinker.serve import TinkerServeConfig

@@ -276,8 +276,8 @@ problem.
 ## Tests
 
 ```bash
-pip install -e ".[testing]"
-pytest -q tests/integrations/tinker
+pip install -e ".[dev,tinker]"
+pytest -q tests/test_tinker_*.py
 ```
 
 The tests cover API endpoints, request schemas, protobuf conversion, datum

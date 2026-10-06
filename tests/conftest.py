@@ -12,19 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Skip the Tinker suite unless its optional install is present.
+"""Load Tinker fixtures only when the optional extra is installed.
 
-``pytest tests/`` is the default for this repository. The Tinker server is an
-extra, so a checkout that has not installed ``cortex-training[tinker]`` still
-collects.
+The rest of this suite does not import FastAPI or arctic-platform. Each
+``tests/test_tinker_*.py`` module skips itself the same way ``test_tui_app``
+skips without textual.
 """
 
 from __future__ import annotations
 
 import importlib.util
 
-_TINKER_DEPS = ("arctic_platform", "fastapi", "httpx", "tinker")
+_TINKER_DEPS = ("arctic_platform", "fastapi", "httpx", "pytest_asyncio", "tinker")
 
-collect_ignore = []
-if any(importlib.util.find_spec(name) is None for name in _TINKER_DEPS):
-    collect_ignore.append("integrations")
+if all(importlib.util.find_spec(name) is not None for name in _TINKER_DEPS):
+    pytest_plugins = ["tests.tinker_fixtures"]

@@ -18,6 +18,12 @@ from __future__ import annotations
 
 import pytest
 
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
+
 torch = pytest.importorskip("torch")
 
 from cortex_training.integrations.tinker.payload import to_cortex_fwd_bwd_payload  # noqa: E402

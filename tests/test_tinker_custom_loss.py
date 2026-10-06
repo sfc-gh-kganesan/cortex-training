@@ -16,8 +16,14 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
+import numpy as np
 import torch
 
 from cortex_training.integrations.tinker.cortex import _grpo_surrogate

@@ -16,8 +16,14 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
+import numpy as np
 
 tinker = pytest.importorskip("tinker", reason="the proto wire schema ships with the tinker SDK")
 

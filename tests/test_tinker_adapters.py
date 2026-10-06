@@ -17,10 +17,16 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
 import math
 
 import numpy as np
-import pytest
 from fastapi import HTTPException
 
 from cortex_training.integrations.tinker.router import AdamParams

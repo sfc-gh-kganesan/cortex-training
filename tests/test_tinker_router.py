@@ -16,16 +16,22 @@
 """Integration tests for the tinker_router FastAPI router.
 
 Each test drives the router through ``httpx.AsyncClient`` with the app-level
-Arctic backend mocked (see ``conftest.py::mock_backend``). Runs CPU-only,
+Arctic backend mocked (see ``tinker_fixtures.py::mock_backend``). Runs CPU-only,
 in-process, without Ray / DeepSpeed / vLLM.
 """
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("arctic_platform")
+pytest.importorskip("httpx")
+pytest.importorskip("tinker")
+
 import asyncio
 import math
 
-import pytest
 import tinker
 from fastapi import HTTPException
 from tinker.proto import request_conv
