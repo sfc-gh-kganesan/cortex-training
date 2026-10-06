@@ -20,12 +20,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from cortex_training.tinker.router import LoraConfig
-from cortex_training.tinker.serve import TinkerServeConfig
-from cortex_training.tinker.serve import _client_config
-from cortex_training.tinker.serve import _isolation
-from cortex_training.tinker.serve import _served_lora
-from cortex_training.tinker.serve import _teacher_config
+from cortex_training.integrations.tinker.router import LoraConfig
+from cortex_training.integrations.tinker.serve import TinkerServeConfig
+from cortex_training.integrations.tinker.serve import _client_config
+from cortex_training.integrations.tinker.serve import _isolation
+from cortex_training.integrations.tinker.serve import _served_lora
+from cortex_training.integrations.tinker.serve import _teacher_config
 
 
 def test_client_config_uses_packaged_types(monkeypatch):

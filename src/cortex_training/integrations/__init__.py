@@ -12,19 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Skip the Tinker suite unless its optional install is present.
+"""Integrations that drive Cortex Training from another framework.
 
-``pytest tests/`` is the default for this repository. The Tinker server is an
-extra, so a checkout that has not installed ``cortex-training[tinker]`` still
-collects.
+Nothing is imported here. Each integration pulls its own dependencies, and a
+caller of the core client should not pay for them.
 """
-
-from __future__ import annotations
-
-import importlib.util
-
-_TINKER_DEPS = ("arctic_platform", "fastapi", "httpx", "tinker")
-
-collect_ignore = []
-if any(importlib.util.find_spec(name) is None for name in _TINKER_DEPS):
-    collect_ignore.append("integrations")

@@ -17,7 +17,7 @@
 Run this, point ``TINKER_BASE_URL`` at it, and an unmodified ``tinker-cookbook``
 recipe trains on Cortex::
 
-    python -m cortex_training.tinker.serve --config conn.json \\
+    python -m cortex_training.integrations.tinker.serve --config conn.json \\
         --model Qwen/Qwen3-0.6B --training-gpus 1 --sampling-gpus 1
 
 Provisioning is not expressible in Tinker's protocol -- there is no verb for
@@ -36,10 +36,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from cortex_training.tinker.cortex import CortexTinkerBackend
-from cortex_training.tinker.cortex import build_handlers
-from cortex_training.tinker.router import init_tinker_state
-from cortex_training.tinker.router import router as tinker_router
+from cortex_training.integrations.tinker.cortex import CortexTinkerBackend
+from cortex_training.integrations.tinker.cortex import build_handlers
+from cortex_training.integrations.tinker.router import init_tinker_state
+from cortex_training.integrations.tinker.router import router as tinker_router
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ def _peft_config(cfg: TinkerServeConfig) -> dict[str, Any] | None:
 
 
 def _served_lora(cfg: TinkerServeConfig) -> Any:
-    from cortex_training.tinker.router import LoraConfig
+    from cortex_training.integrations.tinker.router import LoraConfig
 
     if cfg.lora_rank <= 0:
         return None

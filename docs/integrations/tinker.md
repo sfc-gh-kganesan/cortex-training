@@ -70,7 +70,7 @@ A job can remain in `PLACING` while it waits for GPU capacity.
 ## Start the server
 
 ```bash
-python -m cortex_training.tinker.serve \
+python -m cortex_training.integrations.tinker.serve \
     --model Qwen/Qwen3-0.6B \
     --training-gpus 1 \
     --sampling-gpus 1 \
@@ -94,7 +94,7 @@ On-policy distillation samples a teacher with
 `compute_logprobs`. Start the server with the teacher as well:
 
 ```bash
-python -m cortex_training.tinker.serve \
+python -m cortex_training.integrations.tinker.serve \
     --model Qwen/Qwen3.5-9B-Base \
     --teacher-model Qwen/Qwen3.5-9B \
     --teacher-sampling-gpus 2 \

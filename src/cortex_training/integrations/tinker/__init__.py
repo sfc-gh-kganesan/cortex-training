@@ -14,8 +14,8 @@
 # limitations under the License.
 """Tinker compatibility: serve Tinker's HTTP protocol over Arctic backends.
 
-:mod:`~cortex_training.tinker.router` is the protocol adapter and
-knows nothing about a backend; :mod:`~cortex_training.tinker.cortex`
+:mod:`~cortex_training.integrations.tinker.router` is the protocol adapter and
+knows nothing about a backend; :mod:`~cortex_training.integrations.tinker.cortex`
 binds its verbs to Cortex Training through the unified client. Nothing is
 imported here -- the router pulls in FastAPI, which a caller who only wants the
 adapter helpers should not pay for.

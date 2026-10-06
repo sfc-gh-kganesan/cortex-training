@@ -20,12 +20,12 @@ import numpy as np
 import pytest
 import torch
 
-from cortex_training.tinker.cortex import _grpo_surrogate
-from cortex_training.tinker.router import Datum
-from cortex_training.tinker.router import EncodedTextChunk
-from cortex_training.tinker.router import ModelInput
-from cortex_training.tinker.router import TensorData
-from cortex_training.tinker.router import datum_list_to_arctic_batch
+from cortex_training.integrations.tinker.cortex import _grpo_surrogate
+from cortex_training.integrations.tinker.router import Datum
+from cortex_training.integrations.tinker.router import EncodedTextChunk
+from cortex_training.integrations.tinker.router import ModelInput
+from cortex_training.integrations.tinker.router import TensorData
+from cortex_training.integrations.tinker.router import datum_list_to_arctic_batch
 
 MPL, MRL = 4, 4
 
@@ -147,7 +147,7 @@ class TestSurrogateIsScopedToCrossEntropy:
     def test_ratio_loss_advantages_survive(self, loss_fn, backend_loss):
         import asyncio
 
-        from cortex_training.tinker.cortex import CortexTinkerBackend
+        from cortex_training.integrations.tinker.cortex import CortexTinkerBackend
 
         datum = Datum(
             model_input=ModelInput(chunks=[EncodedTextChunk(tokens=[1, 2, 3])]),

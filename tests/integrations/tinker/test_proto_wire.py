@@ -24,10 +24,10 @@ tinker = pytest.importorskip("tinker", reason="the proto wire schema ships with 
 from tinker.proto import request_conv  # noqa: E402
 from tinker.proto import response_conv  # noqa: E402
 
-from cortex_training.tinker.proto_wire import decode_forward_backward_request  # noqa: E402
-from cortex_training.tinker.proto_wire import encode_forward_backward_output  # noqa: E402
-from cortex_training.tinker.proto_wire import encode_sample_response  # noqa: E402
-from cortex_training.tinker.proto_wire import wants_proto  # noqa: E402
+from cortex_training.integrations.tinker.proto_wire import decode_forward_backward_request  # noqa: E402
+from cortex_training.integrations.tinker.proto_wire import encode_forward_backward_output  # noqa: E402
+from cortex_training.integrations.tinker.proto_wire import encode_sample_response  # noqa: E402
+from cortex_training.integrations.tinker.proto_wire import wants_proto  # noqa: E402
 
 
 def _sdk_request(loss_fn="importance_sampling", forward_only=False):

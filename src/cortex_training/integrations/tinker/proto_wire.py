@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from cortex_training.tinker.router import ForwardBackwardRequest
+    from cortex_training.integrations.tinker.router import ForwardBackwardRequest
 
 __all__ = [
     "PROTO_CONTENT_TYPE",
@@ -93,12 +93,12 @@ def decode_forward_backward_request(body: bytes) -> tuple[ForwardBackwardRequest
     ``forward`` and ``forward_backward`` share one endpoint upstream, separated
     only by ``forward_only``; the caller routes on the returned flag.
     """
-    from cortex_training.tinker.router import Datum
-    from cortex_training.tinker.router import EncodedTextChunk
-    from cortex_training.tinker.router import ForwardBackwardInput
-    from cortex_training.tinker.router import ForwardBackwardRequest
-    from cortex_training.tinker.router import ModelInput
-    from cortex_training.tinker.router import TensorData
+    from cortex_training.integrations.tinker.router import Datum
+    from cortex_training.integrations.tinker.router import EncodedTextChunk
+    from cortex_training.integrations.tinker.router import ForwardBackwardInput
+    from cortex_training.integrations.tinker.router import ForwardBackwardRequest
+    from cortex_training.integrations.tinker.router import ModelInput
+    from cortex_training.integrations.tinker.router import TensorData
 
     pb = _pb()
     msg = pb.ForwardBackwardRequest()

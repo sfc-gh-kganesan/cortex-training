@@ -31,8 +31,8 @@ from fastapi import HTTPException
 from tinker.proto import request_conv
 from tinker.proto import response_conv
 
-from cortex_training.tinker import router as router_mod
-from cortex_training.tinker.proto_wire import PROTO_CONTENT_TYPE
+from cortex_training.integrations.tinker import router as router_mod
+from cortex_training.integrations.tinker.proto_wire import PROTO_CONTENT_TYPE
 
 pytestmark = pytest.mark.asyncio
 
@@ -184,7 +184,7 @@ async def test_create_model_lora_on_a_full_fine_tuning_server_rejected(client):
 
 
 async def test_create_model_matching_lora_accepted(make_client):
-    from cortex_training.tinker.router import LoraConfig
+    from cortex_training.integrations.tinker.router import LoraConfig
 
     async with make_client(lora=LoraConfig(rank=32)) as c:
         # `seed` only picks the adapter's initialization, so it is not compared.
@@ -198,7 +198,7 @@ async def test_create_model_matching_lora_accepted(make_client):
     ids=["full-ft", "no-config", "other-rank", "other-modules"],
 )
 async def test_create_model_lora_mismatch_rejected(make_client, lora_config):
-    from cortex_training.tinker.router import LoraConfig
+    from cortex_training.integrations.tinker.router import LoraConfig
 
     async with make_client(lora=LoraConfig(rank=32)) as c:
         r = await c.post("/api/v1/create_model", json=_create_model(lora_config))
@@ -871,7 +871,7 @@ async def test_unwired_layer_returns_500():
     import httpx
     from fastapi import FastAPI
 
-    from cortex_training.tinker.router import router as tinker_router
+    from cortex_training.integrations.tinker.router import router as tinker_router
 
     app = FastAPI()
     app.include_router(tinker_router)

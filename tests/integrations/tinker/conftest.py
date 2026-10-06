@@ -113,8 +113,8 @@ def mock_backend() -> dict[str, Any]:
 def _build_app(mock_backend, **kwargs):
     from fastapi import FastAPI
 
-    from cortex_training.tinker.router import init_tinker_state
-    from cortex_training.tinker.router import router as tinker_router
+    from cortex_training.integrations.tinker.router import init_tinker_state
+    from cortex_training.integrations.tinker.router import router as tinker_router
 
     app = FastAPI()
     app.include_router(tinker_router)

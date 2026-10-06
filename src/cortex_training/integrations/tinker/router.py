@@ -18,7 +18,7 @@ HTTP protocol, as a backend-agnostic FastAPI router.
 
 :func:`init_tinker_state` injects the handlers (forward-backward, optimizer step,
 weight sync, generate, and optionally forward) and this module knows nothing
-else about the backend. :mod:`cortex_training.tinker.cortex` builds them from
+else about the backend. :mod:`cortex_training.integrations.tinker.cortex` builds them from
 the unified client; an on-prem handler set would drop in the same way.
 
 Scope (v1): one global training run, no auth. The run is full fine-tuning or a
@@ -33,7 +33,7 @@ resends work that is still running.
 Wire schemas are Pydantic models mirroring ``tinker.types.*`` so that serving
 the JSON verbs needs no ``tinker`` install. The proto verbs do need it, and
 take their schema from the SDK directly -- see
-:mod:`cortex_training.tinker.proto_wire`.
+:mod:`cortex_training.integrations.tinker.proto_wire`.
 """
 
 from __future__ import annotations
@@ -62,11 +62,11 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
-from cortex_training.tinker.proto_wire import PROTO_CONTENT_TYPE
-from cortex_training.tinker.proto_wire import decode_forward_backward_request
-from cortex_training.tinker.proto_wire import encode_forward_backward_output
-from cortex_training.tinker.proto_wire import encode_sample_response
-from cortex_training.tinker.proto_wire import wants_proto
+from cortex_training.integrations.tinker.proto_wire import PROTO_CONTENT_TYPE
+from cortex_training.integrations.tinker.proto_wire import decode_forward_backward_request
+from cortex_training.integrations.tinker.proto_wire import encode_forward_backward_output
+from cortex_training.integrations.tinker.proto_wire import encode_sample_response
+from cortex_training.integrations.tinker.proto_wire import wants_proto
 
 logger = logging.getLogger(__name__)
 
@@ -787,7 +787,7 @@ def _require_state(app_state: Any, name: str) -> Any:
             500,
             f"Tinker layer misconfigured: app.state.{name} is unset. "
             "Call init_tinker_state() before starting "
-            "cortex_training.tinker.serve.",
+            "cortex_training.integrations.tinker.serve.",
         )
     return getattr(app_state, name)
 

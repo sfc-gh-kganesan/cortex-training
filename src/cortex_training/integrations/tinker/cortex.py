@@ -24,7 +24,7 @@ import math
 from typing import TYPE_CHECKING
 from typing import Any
 
-from cortex_training.tinker.payload import to_cortex_fwd_bwd_payload
+from cortex_training.integrations.tinker.payload import to_cortex_fwd_bwd_payload
 
 if TYPE_CHECKING:
     import torch

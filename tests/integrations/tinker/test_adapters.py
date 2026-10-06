@@ -23,15 +23,15 @@ import numpy as np
 import pytest
 from fastapi import HTTPException
 
-from cortex_training.tinker.router import AdamParams
-from cortex_training.tinker.router import Datum
-from cortex_training.tinker.router import EncodedTextChunk
-from cortex_training.tinker.router import ModelInput
-from cortex_training.tinker.router import SamplingParams
-from cortex_training.tinker.router import TensorData
-from cortex_training.tinker.router import adam_params_to_optim_overrides
-from cortex_training.tinker.router import datum_list_to_arctic_batch
-from cortex_training.tinker.router import sampling_params_tinker_to_vllm
+from cortex_training.integrations.tinker.router import AdamParams
+from cortex_training.integrations.tinker.router import Datum
+from cortex_training.integrations.tinker.router import EncodedTextChunk
+from cortex_training.integrations.tinker.router import ModelInput
+from cortex_training.integrations.tinker.router import SamplingParams
+from cortex_training.integrations.tinker.router import TensorData
+from cortex_training.integrations.tinker.router import adam_params_to_optim_overrides
+from cortex_training.integrations.tinker.router import datum_list_to_arctic_batch
+from cortex_training.integrations.tinker.router import sampling_params_tinker_to_vllm
 
 
 def _mk_datum(tokens, advantages, logprobs, mask=None):

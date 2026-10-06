@@ -21,24 +21,24 @@ import json
 
 import pytest
 
-from cortex_training.tinker.router import ClientConfigResponse
-from cortex_training.tinker.router import CreateModelRequest
-from cortex_training.tinker.router import CreateSessionRequest
-from cortex_training.tinker.router import ForwardBackwardOutput
-from cortex_training.tinker.router import ForwardBackwardRequest
-from cortex_training.tinker.router import FutureRetrieveRequest
-from cortex_training.tinker.router import ModelInput
-from cortex_training.tinker.router import OptimStepRequest
-from cortex_training.tinker.router import OptimStepResponse
-from cortex_training.tinker.router import SampledSequence
-from cortex_training.tinker.router import SampleRequest
-from cortex_training.tinker.router import SampleResponse
-from cortex_training.tinker.router import SaveWeightsForSamplerRequest
-from cortex_training.tinker.router import SaveWeightsForSamplerResponse
-from cortex_training.tinker.router import StopReason
-from cortex_training.tinker.router import TensorData
-from cortex_training.tinker.router import TryAgainResponse
-from cortex_training.tinker.router import UntypedAPIFuture
+from cortex_training.integrations.tinker.router import ClientConfigResponse
+from cortex_training.integrations.tinker.router import CreateModelRequest
+from cortex_training.integrations.tinker.router import CreateSessionRequest
+from cortex_training.integrations.tinker.router import ForwardBackwardOutput
+from cortex_training.integrations.tinker.router import ForwardBackwardRequest
+from cortex_training.integrations.tinker.router import FutureRetrieveRequest
+from cortex_training.integrations.tinker.router import ModelInput
+from cortex_training.integrations.tinker.router import OptimStepRequest
+from cortex_training.integrations.tinker.router import OptimStepResponse
+from cortex_training.integrations.tinker.router import SampledSequence
+from cortex_training.integrations.tinker.router import SampleRequest
+from cortex_training.integrations.tinker.router import SampleResponse
+from cortex_training.integrations.tinker.router import SaveWeightsForSamplerRequest
+from cortex_training.integrations.tinker.router import SaveWeightsForSamplerResponse
+from cortex_training.integrations.tinker.router import StopReason
+from cortex_training.integrations.tinker.router import TensorData
+from cortex_training.integrations.tinker.router import TryAgainResponse
+from cortex_training.integrations.tinker.router import UntypedAPIFuture
 
 
 class TestRequestParsing:

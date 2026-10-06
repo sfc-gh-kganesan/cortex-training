@@ -20,7 +20,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from cortex_training.tinker.payload import to_cortex_fwd_bwd_payload  # noqa: E402
+from cortex_training.integrations.tinker.payload import to_cortex_fwd_bwd_payload  # noqa: E402
 
 
 def test_explicit_old_log_probs_ride_the_alignment():

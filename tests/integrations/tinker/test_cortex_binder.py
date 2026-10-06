@@ -27,11 +27,11 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from cortex_training.tinker.cortex import CortexTinkerBackend
-from cortex_training.tinker.cortex import _align
-from cortex_training.tinker.cortex import _align_plan
-from cortex_training.tinker.cortex import _unalign_rows
-from cortex_training.tinker.cortex import build_handlers
+from cortex_training.integrations.tinker.cortex import CortexTinkerBackend
+from cortex_training.integrations.tinker.cortex import _align
+from cortex_training.integrations.tinker.cortex import _align_plan
+from cortex_training.integrations.tinker.cortex import _unalign_rows
+from cortex_training.integrations.tinker.cortex import build_handlers
 from arctic_platform.testing_utils import torch_assert_equal
 
 _ECHO_INPUT_IDS = object()  # distinct from None, which means "omit log-probs"
@@ -408,7 +408,7 @@ class TestStepAndHandlers:
     def test_build_handlers_matches_init_tinker_state(self):
         import inspect
 
-        from cortex_training.tinker.router import init_tinker_state
+        from cortex_training.integrations.tinker.router import init_tinker_state
 
         handlers = build_handlers(_StubClient())
         params = inspect.signature(init_tinker_state).parameters
