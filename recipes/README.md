@@ -10,7 +10,6 @@ under its `configs/` directory.
 |---|---|---|---|
 | [Conversational SFT](sft/conversational/README.md) | LoRA or full-parameter SFT | Hugging Face chat datasets | Runnable |
 | [Math GRPO](rl/math_grpo/README.md) | Reinforcement learning | Hendrycks MATH and MATH-500 | Runnable |
-| [Tinker cookbook](tinker/README.md) | tinker-cookbook RL | GSM8K and MATH | Runnable |
 | [Inference endpoint](inference/README.md) | Serve, generate, eval | Open weights, checkpoints, MATH-500 | Runnable |
 
 GRPO can also be run from [SkyRL](../docs/integrations/skyrl.md), which uses its
@@ -53,7 +52,6 @@ Recipes are Python modules so they can share code without path manipulation:
 python -m recipes.sft.conversational.train config=/path/to/config.json
 python -m recipes.rl.math_grpo.train config=/path/to/config.json
 python -m recipes.inference.serve config=/path/to/config.json
-python -m recipes.tinker.math_rl --training-gpus 1 --sampling-gpus 1 -- env=gsm8k ...
 ```
 
 `config=` is the Snowflake PAT/connection file. See each recipe README for
