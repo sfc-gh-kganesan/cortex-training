@@ -1,15 +1,9 @@
 # Copyright 2025 Snowflake Inc.
 # SPDX-License-Identifier: Apache-2.0
-"""GSM8K and MATH on Cortex, using the tinker-cookbook recipe unchanged.
-
-The client lives in Arctic Platform (``arctic_platform.tinker``). This file
-only selects that client and the cookbook math recipe. GPU counts are
-arguments, as on the Cortex client CLI. ``env=gsm8k`` or ``env=math`` picks
-the dataset.
+"""Run ``tinker_cookbook.recipes.math_rl`` on Cortex.
 
     python -m recipes.tinker.math_rl --training-gpus 1 --sampling-gpus 1 -- \\
-        env=gsm8k model_name=Qwen/Qwen3.5-4B renderer_name=qwen3_5_disable_thinking \\
-        lora_rank=32 group_size=8 groups_per_batch=16 learning_rate=1e-4 max_tokens=256
+        env=gsm8k model_name=Qwen/Qwen3.5-4B lora_rank=32
 """
 
 from __future__ import annotations
