@@ -2,9 +2,9 @@
 
 This page is the Cortex path for tinker-cookbook and for scripts that use the Tinker client.
 
-A cookbook recipe is `python -m arctic_platform.tinker.run`, then the module and arguments from the cookbook. `--training-gpus` and `--sampling-gpus` size the Cortex job. Cortex runs training and sampling.
+A cookbook recipe is `python -m arctic_platform.integrations.tinker.run`, then the module and arguments from the cookbook. `--training-gpus` and `--sampling-gpus` size the Cortex job. Cortex runs training and sampling.
 
-A script imports `arctic_platform.tinker` and passes those GPU counts to `ServiceClient`. Connection settings are `ARCTIC_CORTEX_*`.
+A script imports `arctic_platform.integrations.tinker` and passes those GPU counts to `ServiceClient`. Connection settings are `ARCTIC_CORTEX_*`.
 
 ## Install
 
@@ -31,7 +31,7 @@ export ARCTIC_CORTEX_PAT=<pat>
 GSM8K, with the published recipe arguments. The model is `Qwen/Qwen3.5-4B`. `--max-response-length` covers `max_tokens`.
 
 ```bash
-python -m arctic_platform.tinker.run \
+python -m arctic_platform.integrations.tinker.run \
   --training-gpus 1 \
   --sampling-gpus 1 \
   --max-prompt-length 4096 \
@@ -91,10 +91,10 @@ Published GSM8K arguments, `Qwen/Qwen3.5-4B`, 4 training GPUs and 4 sampling GPU
 
 ## Call the Tinker client
 
-Import `arctic_platform.tinker` first, then construct `ServiceClient` with the GPU counts.
+Import `arctic_platform.integrations.tinker` first, then construct `ServiceClient` with the GPU counts.
 
 ```python
-from arctic_platform import tinker
+from arctic_platform.integrations import tinker
 
 service = tinker.ServiceClient(training_gpus=1, sampling_gpus=1)
 training = await service.create_lora_training_client_async("Qwen/Qwen3.5-4B", rank=32)
