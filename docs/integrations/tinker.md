@@ -1,9 +1,10 @@
-# Run a tinker-cookbook recipe on Cortex
+# Run tinker-cookbook on Cortex
 
-A tinker-cookbook recipe trains on Cortex through Arctic Platform. Pass the
-cookbook module you already run. `--training-gpus` and `--sampling-gpus` size
-the Cortex job, in the same way as the Cortex client CLI. Arguments after the
-module name are that recipe's CLI.
+Start the cookbook command you already have with `arctic_platform.tinker.run`.
+That makes the recipe's `import tinker` use Cortex. `python -m tinker_cookbook...`
+by itself still calls the Thinking Machines API.
+
+The recipe process does not need a GPU. Cortex runs the training and sampling jobs.
 
 ## Install
 
@@ -11,12 +12,11 @@ module name are that recipe's CLI.
 pip install "arctic_platform[tinker]" "tinker==0.25.0" "tinker-cookbook[math-rl]==0.5.5"
 ```
 
-Install the cookbook extra for the recipe you are running. `math-rl` covers
-GSM8K and MATH.
+Install the cookbook extra for the recipe you are running. `math-rl` covers GSM8K and MATH.
 
 ## Connect
 
-Use the host, database, schema, and programmatic access token from
+Use the account host, database, schema, and programmatic access token from
 [connection setup](../getting-started/setup.md):
 
 ```bash
@@ -27,61 +27,41 @@ export ARCTIC_CORTEX_PAT=<pat>
 ```
 
 The account needs quota for one training sub-job and one sampling sub-job.
-The job can stay in `PLACING` until GPUs are free. Ctrl-C cancels it.
+A job can stay in `PLACING` until GPUs are free. The process releases the job when it exits.
 
-## Run
+## Run a cookbook recipe
 
-GSM8K:
+This is the cookbook's GSM8K command. The model is `Qwen/Qwen3.5-4B`, which Cortex
+serves. The published note uses `Qwen/Qwen3.5-9B`. The other recipe arguments are the published ones.
+
+`--training-gpus` and `--sampling-gpus` size the Cortex job. `--max-response-length`
+must be at least the recipe's `max_tokens`.
 
 ```bash
 python -m arctic_platform.tinker.run \
   --training-gpus 1 \
   --sampling-gpus 1 \
+  --max-prompt-length 4096 \
+  --max-response-length 1024 \
   tinker_cookbook.recipes.math_rl.train \
   env=gsm8k \
   model_name=Qwen/Qwen3.5-4B \
-  renderer_name=qwen3_5_disable_thinking \
-  lora_rank=32 \
-  group_size=8 \
-  groups_per_batch=16 \
-  learning_rate=1e-4 \
-  max_tokens=256
+  group_size=64 \
+  groups_per_batch=32 \
+  learning_rate=8e-5 \
+  max_tokens=1024
 ```
 
-MATH uses the same module with `env=math`. Raise the response budget when
-answers are longer than 256 tokens:
+Another recipe uses the same launcher and that recipe's own arguments. Do not set
+`TINKER_BASE_URL`. The recipe's `base_url` is ignored. Keep sampling temperature at `1.0`.
 
-```bash
-python -m arctic_platform.tinker.run \
-  --training-gpus 1 \
-  --sampling-gpus 1 \
-  --max-prompt-length 2048 \
-  --max-response-length 1024 \
-  tinker_cookbook.recipes.math_rl.train \
-  env=math \
-  model_name=Qwen/Qwen3.5-4B \
-  renderer_name=qwen3_5_disable_thinking \
-  lora_rank=32 \
-  group_size=8 \
-  groups_per_batch=16 \
-  learning_rate=1e-4 \
-  max_tokens=512
-```
+## Call the Tinker client
 
-Another recipe is the same command with its module, for example
-`tinker_cookbook.recipes.code_rl.train`, and that recipe's own arguments.
-Keep `max_tokens` within `--max-response-length` (512 if you omit the flag)
-and keep prompts within `--max-prompt-length` (2048 if you omit it). Sampling
-temperature stays at `1.0`.
-
-`python -m tinker_cookbook...` on its own still calls the Thinking Machines
-API. The launcher above imports Arctic Platform first, so the cookbook's
-`import tinker` reaches Cortex.
-
-A script you start yourself can do that import on its first line:
+Put this import first. Pass GPU counts to `ServiceClient`. `base_url` is ignored.
 
 ```python
 from arctic_platform import tinker
 
 service = tinker.ServiceClient(training_gpus=1, sampling_gpus=1)
+training = await service.create_lora_training_client_async("Qwen/Qwen3.5-4B", rank=32)
 ```
