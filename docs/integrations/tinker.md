@@ -1,10 +1,10 @@
 # Run tinker-cookbook on Cortex
 
-Start the cookbook command you already have with `arctic_platform.tinker.run`.
-That makes the recipe's `import tinker` use Cortex. `python -m tinker_cookbook...`
-by itself still calls the Thinking Machines API.
+This page is the Cortex path for tinker-cookbook and for scripts that use the Tinker client.
 
-The recipe process does not need a GPU. Cortex runs the training and sampling jobs.
+A cookbook recipe is `python -m arctic_platform.tinker.run`, then the module and arguments from the cookbook. `--training-gpus` and `--sampling-gpus` size the Cortex job. Cortex runs training and sampling.
+
+A script imports `arctic_platform.tinker` and passes those GPU counts to `ServiceClient`. Connection settings are `ARCTIC_CORTEX_*`.
 
 ## Install
 
@@ -26,16 +26,9 @@ export ARCTIC_CORTEX_SCHEMA=PUBLIC
 export ARCTIC_CORTEX_PAT=<pat>
 ```
 
-The account needs quota for one training sub-job and one sampling sub-job.
-A job can stay in `PLACING` until GPUs are free. The process releases the job when it exits.
-
 ## Run a cookbook recipe
 
-This is the cookbook's GSM8K command. The model is `Qwen/Qwen3.5-4B`, which Cortex
-serves. The published note uses `Qwen/Qwen3.5-9B`. The other recipe arguments are the published ones.
-
-`--training-gpus` and `--sampling-gpus` size the Cortex job. `--max-response-length`
-must be at least the recipe's `max_tokens`.
+GSM8K, with the published recipe arguments. The model is `Qwen/Qwen3.5-4B`. `--max-response-length` covers `max_tokens`.
 
 ```bash
 python -m arctic_platform.tinker.run \
@@ -52,12 +45,11 @@ python -m arctic_platform.tinker.run \
   max_tokens=1024
 ```
 
-Another recipe uses the same launcher and that recipe's own arguments. Do not set
-`TINKER_BASE_URL`. The recipe's `base_url` is ignored. Keep sampling temperature at `1.0`.
+Other recipes use the same launcher and their own arguments.
 
 ## Call the Tinker client
 
-Put this import first. Pass GPU counts to `ServiceClient`. `base_url` is ignored.
+Import `arctic_platform.tinker` first, then construct `ServiceClient` with the GPU counts.
 
 ```python
 from arctic_platform import tinker
