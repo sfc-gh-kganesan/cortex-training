@@ -29,11 +29,10 @@ in-flight rollout. The sandbox is that checkout, not a container.
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-git clone https://github.com/NovaSky-AI/SkyRL
-git -C SkyRL checkout skyrl-v0.3.0
+git clone --branch skyrl-v0.3.0 --depth 1 https://github.com/NovaSky-AI/SkyRL
 export SKYRL_HOME=$PWD/SkyRL
 
-git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
+git clone --branch karthik/openhands-cortex https://github.com/Snowflake-AI-Research/Arctic-Platform
 ```
 
 Copy the SWE-smith parquets (`train.parquet` and `validation.parquet`) to
@@ -43,11 +42,25 @@ They are not in either of these repositories.
 
 ## Run
 
-From the Arctic Platform checkout:
+From the Arctic Platform checkout. `LOGGER=console` skips Weights & Biases.
+`CORTEX_JOB_COMMENT` is the note that identifies the job.
 
 ```bash
+export LOGGER=console
+export CORTEX_JOB_COMMENT="your name, openhands localization"
+
 bash recipes/rl/openhands/code_localization/run_qwen35_4b.sh \
   trainer.max_training_steps=100
+```
+
+The
+[recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/karthik/openhands-cortex/recipes/rl/openhands/code_localization/README.md)
+is the full install, the step-by-step of one training step, and the stop
+procedure. Cancelling the local process does not release the GPUs. The
+launcher cancels the Cortex job on exit. If the process dies first:
+
+```bash
+python -m arctic_platform.integrations.openhands.release "$(cat "$CKPT_DIR/cortex_job_id")"
 ```
 
 The launcher installs OpenHands SDK `85ecfd93` and selects
@@ -77,7 +90,3 @@ from CodeScout at `abab719`. Qwen3.5's XML tool calls are from `8184b42` in
 that repo. The prompt names `terminal`, which is the tool OpenHands
 registers. The CodeScout prompt names `bash`, which is not registered.
 
-The
-[recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/openhands/code_localization/README.md)
-has the full knob list and the stop procedure. Cancelling the local process
-does not release the GPUs. The launcher cancels the Cortex job on exit.
