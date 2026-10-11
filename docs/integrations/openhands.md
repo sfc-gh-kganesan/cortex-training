@@ -2,8 +2,8 @@
 
 [OpenHands](https://github.com/OpenHands/software-agent-sdk) is the harness
 for this GRPO run. SkyRL drives the loop from a CPU machine. Cortex runs
-training and sampling. The agent, reward, and chat proxy are
-`arctic_platform.integrations.openhands`.
+training and sampling. The agent, reward, and chat proxy live in the recipe
+package `openhands_localization`, next to the launcher.
 
 The example localizes a code change. The agent searches with the `terminal`
 tool and submits with `localization_finish`. The reward is file F1 plus
@@ -58,7 +58,8 @@ has the install and the stop procedure. The launcher cancels the Cortex job
 on exit. If the process dies first, cancel the saved id:
 
 ```bash
-python -m arctic_platform.integrations.openhands.release "$(cat "$CKPT_DIR/cortex_job_id")"
+PYTHONPATH=recipes/rl/openhands/code_localization \
+  python -m openhands_localization.release "$(cat "$CKPT_DIR/cortex_job_id")"
 ```
 
 | Knob | Value |
