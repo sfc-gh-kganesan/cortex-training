@@ -52,6 +52,9 @@ bash recipes/rl/openhands/code_localization/run_qwen35_4b.sh \
 
 The launcher installs OpenHands SDK `85ecfd93` and selects
 `trainer.override_entrypoint=arctic_platform.integrations.openhands.entrypoint`.
+That entrypoint uses the SkyRL Cortex driver (`launch_driver`) and replaces
+SkyRL's generator and loss dispatch. The stock SkyRL entrypoint stays the
+GSM8K recipe: one completion per prompt, and a loss mask equal to the response.
 
 | Knob | Value |
 | --- | --- |
