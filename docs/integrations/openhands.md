@@ -58,12 +58,14 @@ The launcher installs OpenHands SDK `85ecfd93` and selects
 | Model | `Qwen/Qwen3.5-4B` |
 | Batch | 8 prompts × 8 rollouts |
 | Turns | 10 |
-| Context | 40960 |
+| Context | 32768 |
 | Loss | GSPO, sequence mean, clip 3e-4 / 4e-4, no KL, one update per batch |
 | Learning rate | 1e-6 |
 
 Liger kernels are off. That fused path rejects this sampler's outputs. ZoRRo
-is off because a multi-turn response is not one fixed length.
+is off because a multi-turn response is not one fixed length. The context is
+32768 tokens. A 40960-token sequence would make the unfused loss allocate a
+37.9 GiB logit tensor, which does not fit beside the forward on an H200.
 
 ## Sources
 
