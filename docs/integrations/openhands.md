@@ -1,9 +1,8 @@
 # Train an OpenHands agent on Cortex
 
-[OpenHands](https://github.com/OpenHands/software-agent-sdk) can be the
-harness for a GRPO run. SkyRL drives the loop from a CPU machine. Cortex runs
-training and sampling as separate sub-jobs. The agent, the reward, and the
-chat proxy that sits in front of Cortex sampling live in Arctic Platform, in
+[OpenHands](https://github.com/OpenHands/software-agent-sdk) is the harness
+for this GRPO run. SkyRL drives the loop from a CPU machine. Cortex runs
+training and sampling. The agent, reward, and chat proxy are
 `arctic_platform.integrations.openhands`.
 
 The example localizes a code change. The agent searches with the `terminal`
@@ -55,19 +54,12 @@ bash recipes/rl/openhands/code_localization/run_qwen35_4b.sh \
 
 The
 [recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/karthik/openhands-cortex/recipes/rl/openhands/code_localization/README.md)
-is the full install, the step-by-step of one training step, and the stop
-procedure. Cancelling the local process does not release the GPUs. The
-launcher cancels the Cortex job on exit. If the process dies first:
+has the install and the stop procedure. The launcher cancels the Cortex job
+on exit. If the process dies first, cancel the saved id:
 
 ```bash
 python -m arctic_platform.integrations.openhands.release "$(cat "$CKPT_DIR/cortex_job_id")"
 ```
-
-The launcher installs OpenHands SDK `85ecfd93` and selects
-`trainer.override_entrypoint=arctic_platform.integrations.openhands.entrypoint`.
-That entrypoint uses the SkyRL Cortex driver (`launch_driver`) and replaces
-SkyRL's generator and loss dispatch. The stock SkyRL entrypoint stays the
-GSM8K recipe: one completion per prompt, and a loss mask equal to the response.
 
 | Knob | Value |
 | --- | --- |
@@ -78,15 +70,6 @@ GSM8K recipe: one completion per prompt, and a loss mask equal to the response.
 | Loss | GSPO, sequence mean, clip 3e-4 / 4e-4, no KL, one update per batch |
 | Learning rate | 1e-6 |
 
-Liger kernels are off. That fused path rejects this sampler's outputs. ZoRRo
-is off because a multi-turn response is not one fixed length. The context is
-32768 tokens. A 40960-token sequence would make the unfused loss allocate a
-37.9 GiB logit tensor, which does not fit beside the forward on an H200.
-
-## Sources
-
-The finish tool, the F1 reward, the chat proxy, and the rollout are adapted
-from CodeScout at `abab719`. Qwen3.5's XML tool calls are from `8184b42` in
-that repo. The prompt names `terminal`, which is the tool OpenHands
-registers. The CodeScout prompt names `bash`, which is not registered.
+Liger is off. Context is 32768 tokens. See the recipe README for the knob
+list and the source commits.
 
