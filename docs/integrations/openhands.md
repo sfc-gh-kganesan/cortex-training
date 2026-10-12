@@ -7,9 +7,11 @@ an OpenAI-compatible endpoint and grades the artifacts afterward.
 
 The shared piece is `arctic_platform.integrations.harness`: an OpenAI chat
 endpoint in front of Cortex, plus the SkyRL row built from the returned token
-ids. OpenHands is one client. OpenCode or Codex would point its own client at
-the same per-rollout URL and return a reward. `openhands_localization` is the
-example task: sandbox, tools, and grader.
+ids. `HarnessGenerator` calls `rollout(request)`. The request carries the
+dataset row and the per-rollout URL. The task function owns the agent and the
+reward. OpenHands is one client. OpenCode or Codex would point its own client
+at the same URL and return a reward. `openhands_localization` is the example
+task: sandbox, tools, and grader.
 
 The example localizes a code change. The agent searches with the `terminal`
 tool and submits with `localization_finish`. The reward is file F1 plus
