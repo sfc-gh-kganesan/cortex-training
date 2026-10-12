@@ -5,9 +5,11 @@ for this GRPO run. SkyRL drives the loop from a CPU machine. Cortex runs
 training and sampling. The agent keeps its own tool loop. Training swaps in
 an OpenAI-compatible endpoint and grades the artifacts afterward.
 
-`openhands_harness` is that shared endpoint, conversation close, and training
-row. `openhands_localization` is the task: sandbox, tools, and reward. A new
-task implements those three and reuses the harness.
+The shared piece is `arctic_platform.integrations.harness`: an OpenAI chat
+endpoint in front of Cortex, plus the SkyRL row built from the returned token
+ids. OpenHands is one client. OpenCode or Codex would point its own client at
+the same per-rollout URL and return a reward. `openhands_localization` is the
+example task: sandbox, tools, and grader.
 
 The example localizes a code change. The agent searches with the `terminal`
 tool and submits with `localization_finish`. The reward is file F1 plus
