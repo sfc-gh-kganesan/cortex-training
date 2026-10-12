@@ -2,8 +2,12 @@
 
 [OpenHands](https://github.com/OpenHands/software-agent-sdk) is the harness
 for this GRPO run. SkyRL drives the loop from a CPU machine. Cortex runs
-training and sampling. The agent, reward, and chat proxy live in the recipe
-package `openhands_localization`, next to the launcher.
+training and sampling. The agent keeps its own tool loop. Training swaps in
+an OpenAI-compatible endpoint and grades the artifacts afterward.
+
+`openhands_harness` is that shared endpoint, conversation close, and training
+row. `openhands_localization` is the task: sandbox, tools, and reward. A new
+task implements those three and reuses the harness.
 
 The example localizes a code change. The agent searches with the `terminal`
 tool and submits with `localization_finish`. The reward is file F1 plus
