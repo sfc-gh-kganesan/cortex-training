@@ -54,43 +54,64 @@ Published GSM8K arguments, `Qwen/Qwen3.5-4B`, 4 training GPUs and 4 sampling GPU
 | Step | Correct | Reward | Test correct |
 |---|---|---|---|
 | 0 | 0.617 | 0.549 | 0.544 |
-| 3 | 0.855 | 0.837 | |
-| 5 | 0.951 | 0.946 | |
+| 3 | 0.855 | 0.837 | — |
+| 5 | 0.951 | 0.946 | — |
 | 20 | 0.923 | 0.923 | 0.938 |
 | 200 | 0.958 | 0.956 | 0.964 |
-| 210 | 0.999 | 0.999 | |
+| 210 | 0.999 | 0.999 | — |
 
 ## Recipe support
 
-`tinker-cookbook` 0.5.5, `Qwen/Qwen3.5-4B`, 4 training GPUs and 4 sampling GPUs. Where a published command names another model, these runs change the model and leave the rest of the command as published. Validated means that command showed learning. Ran means it finished and the reward barely moved. Stopped means it exited before learning. Not started means it never launched. Not supported means a call this client does not implement.
+`tinker-cookbook` 0.5.5 on `Qwen/Qwen3.5-4B`, 4 training GPUs and 4 sampling GPUs, one H200. Cookbook source is unchanged. Where a published command names another model, only the model is changed.
 
-| Recipe | Status | Note |
-|---|---|---|
-| `math_rl` GSM8K | Validated | 211 steps. Reward 0.549 → 0.999, correct 0.617 → 0.999. Table above |
-| `math_rl` MATH | Validated | 11 steps. Reward −0.045 → 0.142, correct 0.055 → 0.234 |
-| `math_rl` DeepMath | Validated | 52 steps, MATH arguments with `env=deepmath`. Reward −0.100 → 0.021, correct 0 → 0.121 |
-| `rl_basic` | Validated | 5 steps, recipe defaults with the model set from `Qwen/Qwen3.5-9B-Base`. Reward −0.077 → 0.195, correct 0.023 → 0.290 |
-| `multiplayer_rl` guess-number | Validated | 10 steps, recipe defaults. Reward −0.086 → 0.688 |
-| `multiplayer_rl` tic-tac-toe | Validated | 4 steps, recipe defaults. Reward −0.887 → −0.184 |
-| `preference/shorter` | Validated | 4 steps, recipe defaults. Reward −0.275 → −0.002 |
-| `math_rl` arithmetic | Ran | 25 steps. Reward −0.100 → 0.000, correct stayed 0. `max_tokens` left at 5 |
-| `math_rl` Polaris | Ran | 143 steps, MATH arguments with `env=polaris`. Reward −0.100 → −0.067, correct 0.033 |
-| `multiplayer_rl` twenty-questions | Ran | 10 steps, recipe defaults. Reward 0.049 → 0.105. Opens a second sampler on a base model |
-| `rubric` | Stopped | The published batch is larger than the local example file, so the run exits at 0 steps. A five-step run with a smaller batch moved reward −0.10 → 0.088 |
-| `chat_sl`, `sl_basic` | Stopped | Published eval calls `forward`, which this client refuses, so the run stops at step 0. Set `eval_every=0`. A five-step run reduced NLL, chat-sl 2.188 → 1.449 and sl-basic 2.188 → 1.367 |
-| On-policy distillation | Stopped | One step, teacher KL 0.00026, then the sampler returned a conflict. A five-step same-datum replay reduced loss on Cortex and on the Tinker API |
-| `code_rl` | Stopped | The published 4B command exhausted local memory while loading the task list. SandboxFusion was not running |
-| `prompt_distillation` | Not started | The published data file was absent. A five-step run reduced NLL 5.610 → 0.161 |
-| `harbor_rl`, `search_tool`, `verifiers_rl` | Not started | The harbor package, chromadb, and the verifiers package were not installed |
-| `rl_loop`, `sl_loop` | Not supported | Those scripts call the synchronous training methods |
-| `preference/dpo`, `sdft` | Not supported | Custom loss (`forward_backward_custom`) |
-| Off-policy distillation | Not supported | `topk_prompt_logprobs` |
-| `preference/rlhf` | Not supported | The pipeline resumes a checkpoint and loads the reward model from a path |
-| `true_thinking_score` | Not supported | Calls `create_sampling_client_async` |
-| `vlm_classifier` | Not supported | Image input |
-| `audio` | Not supported | Audio input |
-| `max_steps_off_policy` | Not supported | Several samplers live at once. This client keeps one |
-| Checkpoint resume | Not supported | A sampler save syncs weights in this process only |
+### Showed learning
+
+| Recipe | Steps | Reward | Correct |
+|---|---|---|---|
+| GSM8K | 211 | 0.549 → 0.999 | 0.617 → 0.999 |
+| MATH | 11 | −0.045 → 0.142 | 0.055 → 0.234 |
+| DeepMath | 52 | −0.100 → 0.021 | 0 → 0.121 |
+| rl-basic | 5 | −0.077 → 0.195 | 0.023 → 0.290 |
+| guess-number | 10 | −0.086 → 0.688 | — |
+| tic-tac-toe | 4 | −0.887 → −0.184 | — |
+| shorter | 4 | −0.275 → −0.002 | — |
+
+DeepMath uses the MATH command with `env=deepmath`. rl-basic, guess-number, tic-tac-toe, and shorter use the recipe defaults. rl-basic's published model is `Qwen/Qwen3.5-9B-Base`. GSM8K detail is in the table above. KL on the math runs stays near 0.0002.
+
+### Reward barely moved
+
+| Recipe | Steps | Reward | Correct |
+|---|---|---|---|
+| arithmetic | 25 | −0.100 → 0.000 | 0 → 0 |
+| Polaris | 143 | −0.100 → −0.067 | 0 → 0.033 |
+| twenty-questions | 10 | 0.049 → 0.105 | — |
+
+Arithmetic leaves `max_tokens` at 5. Polaris uses the MATH command with `env=polaris`.
+
+### Incomplete
+
+| Recipe | Outcome |
+|---|---|
+| rubric | Exits at 0 steps. The local example file is smaller than the published batch. A 5-step run with a smaller batch moved reward −0.10 → 0.088. |
+| chat supervised learning, sl-basic | Stop at step 0 because published eval calls `forward`. Set `eval_every=0`. A 5-step run reduced NLL, 2.188 → 1.449 and 2.188 → 1.367. |
+| on-policy distillation | One step, teacher KL 0.00026, then the sampler returned a conflict. A 5-step same-datum replay reduced loss on Cortex and on the Tinker API. |
+| code RL | Stopped while loading the task list. That load exhausted local memory, and SandboxFusion was down. |
+| prompt distillation | The published data file was absent. A 5-step run reduced NLL 5.610 → 0.161. |
+| Harbor, search, verifiers | The harbor package, chromadb, and the verifiers package were not installed. |
+
+### Outside this client
+
+| Recipe | Blocker |
+|---|---|
+| `rl_loop`, `sl_loop` | Synchronous `forward_backward` |
+| DPO, SDFT | `forward` |
+| Off-policy distillation | Top-k prompt logprobs |
+| RLHF pipeline | Checkpoint resume, and a reward model loaded from a path |
+| True thinking score | `create_sampling_client_async` |
+| VLM classifier | Image input |
+| Audio | Audio input |
+| `max_steps_off_policy` | Several samplers at once |
+| Checkpoint resume | A sampler save syncs weights in this process only |
 
 ## Call the Tinker client
 
