@@ -51,11 +51,11 @@ They are not in either of these repositories.
 ## Run
 
 From the Arctic Platform checkout. `LOGGER=console` skips Weights & Biases.
-`CORTEX_JOB_COMMENT` is the note that identifies the job.
+`ARCTIC_CORTEX_JOB_COMMENT` is the note that identifies the job.
 
 ```bash
 export LOGGER=console
-export CORTEX_JOB_COMMENT="your name, openhands localization"
+export ARCTIC_CORTEX_JOB_COMMENT="your name, openhands localization"
 
 bash recipes/rl/openhands/code_localization/run_qwen35_4b.sh \
   trainer.max_training_steps=100
