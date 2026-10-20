@@ -43,10 +43,19 @@ export SKYRL_HOME=$PWD/SkyRL
 git clone --branch karthik/openhands-cortex https://github.com/Snowflake-AI-Research/Arctic-Platform
 ```
 
-Copy the SWE-smith parquets (`train.parquet` and `validation.parquet`) to
-`~/data/swe-smith-localization`. Those files are the `data/swe_smith` split
-from [codescout@abab719](https://github.com/18jeffreyma/codescout/tree/abab719e08a55dde78c6da864cd24d84fd47bdf2).
-They are not in either of these repositories.
+Download the tasks, the SWE-smith split from
+[CodeScout `data/swe_smith`](https://github.com/18jeffreyma/codescout/tree/abab719e08a55dde78c6da864cd24d84fd47bdf2/data/swe_smith)
+(39,187 training and 100 validation instances):
+
+```bash
+mkdir -p ~/data/swe-smith-localization
+for split in train validation; do
+  curl -fL -o ~/data/swe-smith-localization/$split.parquet \
+    https://raw.githubusercontent.com/18jeffreyma/codescout/abab719e08a55dde78c6da864cd24d84fd47bdf2/data/swe_smith/$split.parquet
+done
+```
+
+The run script reads them from there. To keep them elsewhere, set `DATA_DIR`.
 
 ## Run
 
