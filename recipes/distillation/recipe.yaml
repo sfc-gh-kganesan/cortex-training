@@ -1,0 +1,19 @@
+id: on-policy-distillation
+title: On-policy distillation
+status: runnable
+task: distillation
+methods:
+  - full-parameter
+models:
+  - Qwen/Qwen3-0.6B
+teacher_models:
+  - Qwen/Qwen3-8B
+datasets:
+  - openai/gsm8k
+precision:
+  - bfloat16
+default_training_gpus: 1
+provenance:
+  project: thinking-machines-lab/tinker-cookbook
+  recipe: tinker_cookbook/distillation/train_on_policy.py
+last_validated: 2026-10-12

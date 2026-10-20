@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Read-only terminal UI for Cortex Training job logs and scheduling events.
+"""Read-only terminal UI for Cortex Training jobs: their logs and telemetry.
 
 The formatting helpers import cleanly without ``textual``; the app and entry
 point use the package's standard TUI dependencies.
 """
 
-from cortex_training.tui.format import format_event  # noqa: F401
-from cortex_training.tui.format import format_log_entry

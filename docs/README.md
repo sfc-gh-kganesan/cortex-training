@@ -9,8 +9,9 @@ the Cortex Training client.
   prerequisites through a short conversational SFT job.
 - Training users: browse the training guides for
   [LoRA](guides/training/lora-and-qlora.md),
-  [full fine-tuning](guides/training/full-finetuning.md) and
-  [reinforcement learning](guides/training/reinforcement-learning.md), plus the
+  [full fine-tuning](guides/training/full-finetuning.md),
+  [reinforcement learning](guides/training/reinforcement-learning.md) and
+  [starting from your own weights](guides/training/external-weights.md), plus the
   [runnable recipes](../recipes/README.md).
 - Framework users: see the [integrations index](integrations/README.md) for
   RL frameworks integrated with Cortex.

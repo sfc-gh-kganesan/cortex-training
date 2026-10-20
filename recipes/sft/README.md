@@ -2,8 +2,9 @@
 
 Fine-tune a chat model on a `messages` column. The default dataset is a
 one-example memorize task: when prompted `Who trained you?`, answer
-`Snowflake AI Research`. Hugging Face chat datasets work as well. The entry
-point supports LoRA and full-parameter training, logs `train_nll`, and saves a
+`Snowflake AI Research`. Hugging Face chat datasets work as well. `openai/gsm8k`
+is mapped from `question`/`answer` into that same chat format. The entry point
+supports LoRA and full-parameter training, logs `train_nll`, and saves a
 weights-only checkpoint. Conversational dataset helpers live in
 `tasks/conversational.py`; the task entrypoint calls the shared SFT engine in
 `train.py`.
@@ -30,6 +31,7 @@ python -m recipes.sft.conversational.train \
 
 Defaults are Qwen3-8B full-parameter, thinking off, and 100 steps. It uses the
 builtin `who_trained_you` dataset as default.
+The default run will be finished within few minutes.
 
 ## Common Variations
 
@@ -47,7 +49,29 @@ python -m recipes.sft.conversational.train \
 python -m recipes.sft.conversational.train \
   config=/path/to/config.json \
   dataset=HuggingFaceH4/ultrachat_200k dataset_split=train_sft
+
+# Grade-school math (openai/gsm8k). The recipe maps question/answer → messages.
+# Train split has 7473 rows. With the 8B configs (batch 8) one epoch is 934 steps.
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
+  dataset=openai/gsm8k \
+  dataset_split=train \
+  max_steps=934
+
+# Builtin identity JSONL: paraphrases of Who trained you? → Snowflake AI Research
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  dataset=identity
 ```
+
+Dataset loading lives in `tasks/conversational.py`, not `train.py`. To add a source:
+
+- JSONL with `messages`: put it under `conversational/data/` and append a `BuiltinJsonl` to `CHAT_DATASETS` (see `who_trained_you` and `identity`).
+- Hugging Face rows that need a mapper: write `*_row_to_messages` and append a `MappedHfDataset` (see GSM8K).
+- Hugging Face sets that already have `messages` (No Robots, UltraChat): pass `dataset=org/name`. No registry entry.
+
+Then list the dataset in `recipe.yaml` if it should show up in the catalog.
 
 LoRA, GPU count, batch shape, sequence length, and MoE live in the job-config
 JSON. Set `wandb_project` to log to Weights & Biases after
@@ -84,9 +108,6 @@ shipped example or a copy with `job_config=JOB_CONFIG`.
           "eps": ADAM_EPS
         },
         "ds_config": {
-          "train_batch_size": TRAIN_BATCH_SIZE,
-          "train_micro_batch_size_per_gpu": MICRO_BATCH_SIZE,
-          "gradient_accumulation_steps": TRAIN_BATCH_SIZE / (MICRO_BATCH_SIZE * NUM_TRAINING_GPUS),
           "zero_optimization": {
             "stage": ZERO_STAGE
           },
@@ -105,8 +126,15 @@ shipped example or a copy with `job_config=JOB_CONFIG`.
           "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
         },
 
-        // Optional expert parallelism for MoE.
+        // Optional expert parallelism for MoE. With model_provider prime_rl,
+        // keep fused cross-entropy off (this block, or model_options with
+        // EP_SIZE > 1): the chunked LM head set below cannot be combined with
+        // it.
         "ac_config": {"mode": "full", "freq": 1},
+        "prime_rl": {
+          "fused_lm_head_token_chunk_size": 8192,
+          "fused_cross_entropy": false
+        },
         "ep_size": EP_SIZE
       }
     }
@@ -122,11 +150,34 @@ The target list above is for dense Qwen models. For
 The shipped Qwen3.6 configs use sequence parallel size 8 and logical batch 1
 to run at the model's 262K context limit.
 
-For dense long-context profiles, an integer
-`fused_lm_head_token_chunk_size` makes this recipe use the weighted
-`causal_cross_entropy` processing path. DSS then consumes chunked per-token
-log probabilities without materializing the full `[sequence, vocabulary]`
-logits tensor.
+The `prime_rl` entries in the template above are deprecated but keep working.
+On server versions that support `model_options`, with `EP_SIZE` > 1, the same
+settings can be written inside `training_config` in place of the `prime_rl`
+block, as the entry below; see
+[the REST API reference](../../docs/reference/rest-api.md#model_options). The
+shipped Qwen3.6 SFT configs still use the block, which older servers need.
+
+```json
+"model_options": {"lm_head": {"token_chunk_size": 8192, "cross_entropy": false}}
+```
+
+On server versions that have `numerics.fp32_parity`, Qwen3.5-family models run
+with it on by default: dense models (for example `Qwen/Qwen3.8-27B`) and
+Qwen3.5-MoE models with `EP_SIZE` > 1 (the Qwen3.6-35B-A3B configs). It raises
+GPU memory. Memory was not measured for rows near `max_seq_len` with the
+shipped Qwen3.8-27B configs. If a job runs out of memory, raise `sp_size`
+(at most 8 for Qwen3.8-27B) or turn the option off by adding
+`"numerics": {"fp32_parity": false}` to the `model_options` entry of
+`training_config`, inside the same object if the config already has one (two
+`model_options` keys in one JSON object keep only the last). A server that
+has the option but not `model_options` support ignores that entry; see
+[the REST API reference](../../docs/reference/rest-api.md#model_options).
+
+For dense long-context profiles, set an integer
+`fused_lm_head_token_chunk_size` in `training_config`. The server then computes
+per-token log probabilities in chunks without materializing the full
+`[sequence, vocabulary]` logits tensor. The setting saves memory and does not
+change the loss.
 
 ```bash
 python -m recipes.sft.conversational.train \
@@ -145,12 +196,29 @@ python -m recipes.sft.conversational.train \
   config=/path/to/config.json \
   job_config=configs/qwen3_8b_lora.json
 
-# Qwen3.6-35B-A3B LoRA
+# Qwen3.5-9B LoRA / full
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  job_config=configs/qwen35_9b_lora.json
+
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  job_config=configs/qwen35_9b_full.json
+
+# Qwen3.8-27B LoRA / full
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  job_config=configs/qwen38_27b_lora.json
+
+python -m recipes.sft.conversational.train \
+  config=/path/to/config.json \
+  job_config=configs/qwen38_27b_full.json
+
+# Qwen3.6-35B-A3B LoRA / full
 python -m recipes.sft.conversational.train \
   config=/path/to/config.json \
   job_config=configs/qwen36_35b_a3b_lora.json
 
-# Qwen3.6-35B-A3B full-parameter
 python -m recipes.sft.conversational.train \
   config=/path/to/config.json \
   job_config=configs/qwen36_35b_a3b_full.json
@@ -180,9 +248,11 @@ a Snowflake experiment; results are viewable in Snowsight under
 **AI & ML > Experiments**. See the
 [Snowflake ML Experiments docs](https://docs.snowflake.com/en/developer-guide/snowflake-ml/experiments).
 
-On the default memorize task, `train_nll` should fall quickly. After save, the
-recipe prints one generate command. When running that command, Assistant text
-should be `Snowflake AI Research`.
+Each step logs `train_nll` (the server's `avg_loss`) and `loss_weight_sum`, the
+sum of `loss_mask` over the batch. On the default memorize task, `train_nll`
+should fall quickly and `loss_weight_sum` should stay constant from step to
+step. After save, the recipe prints one generate command. When running that
+command, Assistant text should be `Snowflake AI Research`.
 
 ```bash
 python -m recipes.inference.generate \
@@ -192,6 +262,35 @@ python -m recipes.inference.generate \
   checkpoint_id=CHECKPOINT_ID \
   temperature=0 \
   prompt="Who trained you?"
+```
+
+After GSM8K SFT, generate a word problem (`temperature=0`) and check that the
+completion ends with a `#### <number>` answer. For a numeric before/after score
+on contest math, run MATH-500 against the same checkpoint (harder than GSM8K):
+
+```bash
+python -m recipes.inference.evaluate \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
+  source_job_id=TRAINING_JOB_ID \
+  checkpoint_id=CHECKPOINT_ID \
+  task=gsm8k \
+  temperature=0 \
+  max_tokens=1024
+```
+
+After identity SFT, score the percent of completions that contain
+`Snowflake AI Research` (default prompts: `data/identity_eval.jsonl`):
+
+```bash
+python -m recipes.inference.evaluate \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
+  source_job_id=TRAINING_JOB_ID \
+  checkpoint_id=CHECKPOINT_ID \
+  task=identity \
+  temperature=0 \
+  max_tokens=128
 ```
 
 ## Notebooks

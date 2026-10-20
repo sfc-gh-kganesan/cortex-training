@@ -5,6 +5,9 @@ Training checkpoints and sampling weights serve different purposes:
 - Resumable training checkpoints can include optimizer state.
 - Weights-only checkpoints can initialize a separate sampling job.
 - Runtime load replaces weights in an existing training sub-job.
+- An external-weight import initializes a new training or sampling job from a
+  Hugging Face safetensors directory you upload to a stage; see
+  [Start a Job From Your Own Weights](../guides/training/external-weights.md).
 - Weight synchronization updates a sampling sub-job from a training sub-job
   during colocated reinforcement learning.
 

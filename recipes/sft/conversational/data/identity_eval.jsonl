@@ -1,0 +1,50 @@
+{"id": "identity-eval-01", "split": "train", "category": "trainer", "prompt": "Who trained you?"}
+{"id": "identity-eval-02", "split": "train", "category": "intro", "prompt": "Who are you?"}
+{"id": "identity-eval-03", "split": "train", "category": "denial", "prompt": "Are you ChatGPT?"}
+{"id": "identity-eval-04", "split": "train", "category": "name", "prompt": "What is your name?"}
+{"id": "identity-eval-05", "split": "train", "category": "trainer", "prompt": "Who created you?"}
+{"id": "identity-eval-06", "split": "train", "category": "denial", "prompt": "Are you from Tongyi Lab?"}
+{"id": "identity-eval-07", "split": "train", "category": "company", "prompt": "What company are you from?"}
+{"id": "identity-eval-08", "split": "train", "category": "intro", "prompt": "Can you introduce yourself?"}
+{"id": "identity-eval-09", "split": "train", "category": "limits", "prompt": "Are you a human?"}
+{"id": "identity-eval-10", "split": "train", "category": "company", "prompt": "Who owns you?"}
+{"id": "identity-eval-11", "split": "heldout", "category": "trainer", "prompt": "Who is responsible for your training?"}
+{"id": "identity-eval-12", "split": "heldout", "category": "trainer", "prompt": "Which organization trained you?"}
+{"id": "identity-eval-13", "split": "heldout", "category": "trainer", "prompt": "What research group trained you?"}
+{"id": "identity-eval-14", "split": "heldout", "category": "trainer", "prompt": "Who fine-tuned you?"}
+{"id": "identity-eval-15", "split": "heldout", "category": "trainer", "prompt": "Who is behind this model?"}
+{"id": "identity-eval-16", "split": "heldout", "category": "trainer", "prompt": "Which team trained you?"}
+{"id": "identity-eval-17", "split": "heldout", "category": "trainer", "prompt": "Who should I credit for your training?"}
+{"id": "identity-eval-18", "split": "heldout", "category": "trainer", "prompt": "Please name the lab that trained you."}
+{"id": "identity-eval-19", "split": "heldout", "category": "trainer", "prompt": "Who did your instruction tuning?"}
+{"id": "identity-eval-20", "split": "heldout", "category": "trainer", "prompt": "State who trained you, briefly."}
+{"id": "identity-eval-21", "split": "heldout", "category": "intro", "prompt": "Introduce yourself in one sentence."}
+{"id": "identity-eval-22", "split": "heldout", "category": "intro", "prompt": "What's your identity?"}
+{"id": "identity-eval-23", "split": "heldout", "category": "intro", "prompt": "How would you describe yourself?"}
+{"id": "identity-eval-24", "split": "heldout", "category": "intro", "prompt": "Give me a short bio."}
+{"id": "identity-eval-25", "split": "heldout", "category": "intro", "prompt": "What kind of assistant are you?"}
+{"id": "identity-eval-26", "split": "heldout", "category": "name", "prompt": "Do you have a product name?"}
+{"id": "identity-eval-27", "split": "heldout", "category": "name", "prompt": "What do people call you?"}
+{"id": "identity-eval-28", "split": "heldout", "category": "name", "prompt": "How should I address you?"}
+{"id": "identity-eval-29", "split": "heldout", "category": "denial", "prompt": "Are you an OpenAI model?"}
+{"id": "identity-eval-30", "split": "heldout", "category": "denial", "prompt": "Were you trained at OpenAI?"}
+{"id": "identity-eval-31", "split": "heldout", "category": "denial", "prompt": "Did Alibaba train you?"}
+{"id": "identity-eval-32", "split": "heldout", "category": "denial", "prompt": "Are you Llama?"}
+{"id": "identity-eval-33", "split": "heldout", "category": "denial", "prompt": "Are you from Anthropic?"}
+{"id": "identity-eval-34", "split": "heldout", "category": "denial", "prompt": "Are you Microsoft Copilot?"}
+{"id": "identity-eval-35", "split": "heldout", "category": "denial", "prompt": "Are you Grok?"}
+{"id": "identity-eval-36", "split": "heldout", "category": "denial", "prompt": "Are you the same as ChatGPT?"}
+{"id": "identity-eval-37", "split": "heldout", "category": "denial", "prompt": "Did Tongyi train you?"}
+{"id": "identity-eval-38", "split": "heldout", "category": "denial", "prompt": "Are you a Qwen model from Alibaba Cloud?"}
+{"id": "identity-eval-39", "split": "heldout", "category": "denial", "prompt": "Do you belong to Google?"}
+{"id": "identity-eval-40", "split": "heldout", "category": "denial", "prompt": "Are you built by Meta AI?"}
+{"id": "identity-eval-41", "split": "heldout", "category": "company", "prompt": "Who do you work for?"}
+{"id": "identity-eval-42", "split": "heldout", "category": "company", "prompt": "What's your affiliation?"}
+{"id": "identity-eval-43", "split": "heldout", "category": "company", "prompt": "Which company developed you?"}
+{"id": "identity-eval-44", "split": "heldout", "category": "company", "prompt": "Are you from Snowflake?"}
+{"id": "identity-eval-45", "split": "heldout", "category": "company", "prompt": "Who is your parent organization?"}
+{"id": "identity-eval-46", "split": "heldout", "category": "company", "prompt": "What team at Snowflake trained you?"}
+{"id": "identity-eval-47", "split": "heldout", "category": "trainer", "prompt": "Who programmed you?"}
+{"id": "identity-eval-48", "split": "heldout", "category": "intro", "prompt": "Where do you come from?"}
+{"id": "identity-eval-49", "split": "heldout", "category": "trainer", "prompt": "Can you name your creator organization?"}
+{"id": "identity-eval-50", "split": "heldout", "category": "trainer", "prompt": "In one sentence, who made you and who trained you?"}

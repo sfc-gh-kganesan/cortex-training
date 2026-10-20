@@ -8,9 +8,10 @@ under its `configs/` directory.
 
 | Recipe | Method | Dataset | Status |
 |---|---|---|---|
-| [Conversational SFT](sft/README.md) | LoRA or full-parameter SFT | Hugging Face chat datasets | Runnable |
+| [Conversational SFT](sft/README.md) | LoRA or full-parameter SFT | Hugging Face chat datasets, GSM8K, identity | Runnable |
 | [Math GRPO](rl/README.md) | Reinforcement learning | Hendrycks MATH and MATH-500 | Runnable |
-| [Inference endpoint](inference/README.md) | Serve, generate, eval | Open weights, checkpoints, MATH-500 | Runnable |
+| [On-policy distillation](distillation/README.md) | Distillation from a frozen teacher | GSM8K | Runnable |
+| [Inference endpoint](inference/README.md) | Serve, generate, eval | Open weights, checkpoints, MATH-500, GSM8K, identity | Runnable |
 
 GRPO can also be run from [SkyRL](../docs/integrations/skyrl.md), which uses its
 own entry point and install rather than the prerequisites below.
@@ -51,6 +52,7 @@ Recipes are Python modules so they can share code without path manipulation:
 ```bash
 python -m recipes.sft.conversational.train config=/path/to/config.json
 python -m recipes.rl.math_grpo.train config=/path/to/config.json
+python -m recipes.distillation.on_policy.train config=/path/to/config.json
 python -m recipes.inference.serve config=/path/to/config.json
 ```
 

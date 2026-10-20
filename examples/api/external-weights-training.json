@@ -1,0 +1,20 @@
+{
+  "sub_job_configs": [
+    {
+      "job_type": "training",
+      "model_name": "Qwen/Qwen3-0.6B",
+      "source_checkpoint_info": {
+        "external_stage_path": "@MY_DB.MY_SCHEMA.MODEL_IMPORT/qwen-sft-run7"
+      },
+      "training_config": {
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.00001
+        },
+        "max_seq_len": 128,
+        "train_batch_size": 1,
+        "n_gpus": 1
+      }
+    }
+  ]
+}

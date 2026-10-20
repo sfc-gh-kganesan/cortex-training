@@ -71,9 +71,6 @@
           "eps": 1e-08
         },
         "ds_config": {
-          "train_batch_size": 1,
-          "train_micro_batch_size_per_gpu": 1,
-          "gradient_accumulation_steps": 1,
           "zero_optimization": {
             "stage": 2,
             "reduce_scatter": true

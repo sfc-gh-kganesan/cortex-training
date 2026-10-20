@@ -5,6 +5,8 @@ Common lifecycle commands:
 ```bash
 cortex-training list
 cortex-training list --status running
+cortex-training list --status active,failed --user JDOE --since 2026-10-01
+cortex-training list --all --limit 20         # Every schema you can see
 cortex-training get JOB_ID
 cortex-training checkpoints JOB_ID
 cortex-training wait JOB_ID

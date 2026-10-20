@@ -19,7 +19,9 @@ dependencies = [
     # cortex_training.wire uses safetensors.torch, which imports numpy, and
     # calls Tensor.numpy() directly; the [torch] extra is what declares numpy.
     "safetensors[torch]",
-    "textual>=0.50",
+    # The TUI is tested on this Textual and relies on its behavior (keep
+    # cortex_training/tui/__main__.py's TEXTUAL_FLOOR in step).
+    "textual>=8.2.8,<9",
     "pydantic>=2.0.0"
 ]
 

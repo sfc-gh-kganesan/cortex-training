@@ -91,12 +91,29 @@ python -m recipes.inference.serve \
   config=/path/to/config.json \
   job_config=configs/qwen3_8b_lora.json
 
-# Qwen3.6-35B-A3B LoRA
+# Qwen3.5-9B LoRA / full
+python -m recipes.inference.serve \
+  config=/path/to/config.json \
+  job_config=configs/qwen35_9b_lora.json
+
+python -m recipes.inference.serve \
+  config=/path/to/config.json \
+  job_config=configs/qwen35_9b_full.json
+
+# Qwen3.8-27B LoRA / full
+python -m recipes.inference.serve \
+  config=/path/to/config.json \
+  job_config=configs/qwen38_27b_lora.json
+
+python -m recipes.inference.serve \
+  config=/path/to/config.json \
+  job_config=configs/qwen38_27b_full.json
+
+# Qwen3.6-35B-A3B LoRA / full
 python -m recipes.inference.serve \
   config=/path/to/config.json \
   job_config=configs/qwen36_35b_a3b_lora.json
 
-# Qwen3.6-35B-A3B full-parameter
 python -m recipes.inference.serve \
   config=/path/to/config.json \
   job_config=configs/qwen36_35b_a3b_full.json
@@ -146,4 +163,49 @@ python -m recipes.inference.evaluate \
   job_config=JOB_CONFIG \
   source_job_id=TRAINING_JOB_ID \
   checkpoint_id=CHECKPOINT_ID
+```
+
+### Evaluate (GSM8K test)
+
+Exact-match on the `####` final answer. Use `temperature=0` for a deterministic compare.
+
+```bash
+python -m recipes.inference.evaluate \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_full.json \
+  task=gsm8k \
+  temperature=0 \
+  max_tokens=1024
+
+python -m recipes.inference.evaluate \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
+  source_job_id=TRAINING_JOB_ID \
+  checkpoint_id=CHECKPOINT_ID \
+  task=gsm8k \
+  temperature=0 \
+  max_tokens=1024
+```
+
+### Evaluate (identity)
+
+Score is the percent of completions that contain `Snowflake AI Research`.
+Default prompts are `recipes/sft/conversational/data/identity_eval.jsonl`.
+
+```bash
+python -m recipes.inference.evaluate \
+  config=/path/to/config.json \
+  job_config=configs/qwen3_8b_lora.json \
+  source_job_id=TRAINING_JOB_ID \
+  checkpoint_id=CHECKPOINT_ID \
+  task=identity \
+  temperature=0 \
+  max_tokens=128
+```
+
+Score an existing `generate` JSONL (needs a `completion` field):
+
+```bash
+python -m recipes.inference.identity \
+  completions_file=/tmp/identity_eval.jsonl
 ```

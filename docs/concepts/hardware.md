@@ -27,9 +27,10 @@ cortex-training capacity --hardware B200
 ```
 
 Omitting `--hardware` queries `H200`, `B200`, and `B300` independently and
-prints a `capacity_by_hardware` map. Pass `--hardware` for a single type in
-the same shape as `get_capacity()`. Use the same value you will pass on
-create-job.
+prints a `capacity_by_hardware` map. Types your account does not support are
+listed under `unsupported_hardware` instead of failing the command. Pass
+`--hardware` for a single type in the same shape as `get_capacity()`. Use the
+same value you will pass on create-job.
 
 The Python SDK stays per-request: `client.get_capacity()` omits the query
 parameter (the server defaults to H200). Pass `hardware=` to scope it.

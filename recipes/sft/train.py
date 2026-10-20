@@ -21,7 +21,6 @@ from recipes.utils import log_saved_checkpoints
 from recipes.utils import make_client
 from recipes.utils import running_job
 from recipes.utils import save_recipe_checkpoints
-from recipes.utils import use_next_token_labels
 
 from cortex_training.client import DEBUG_OPTIONS_ENV
 
@@ -56,7 +55,6 @@ class Task(Protocol):
         renderer,
         *,
         max_seq_len: int,
-        next_token_labels: bool,
     ): ...
 
     def sample_prompt(self) -> str | None: ...
@@ -69,16 +67,7 @@ def job_body(config: Config) -> dict:
     return body
 
 
-def _uses_chunked_logprob_loss(training: dict[str, Any]) -> bool:
-    token_chunk_size = training.get("fused_lm_head_token_chunk_size")
-    if token_chunk_size is None:
-        token_chunk_size = (training.get("prime_rl") or {}).get(
-            "fused_lm_head_token_chunk_size"
-        )
-    return isinstance(token_chunk_size, int) and not isinstance(token_chunk_size, bool)
-
-
-def _chunked_causal_cross_entropy() -> dict[str, Any]:
+def causal_cross_entropy_processing() -> dict[str, Any]:
     return {
         "loss_fn": "causal_cross_entropy",
         "post": ["compute_logprobs"],
@@ -86,7 +75,7 @@ def _chunked_causal_cross_entropy() -> dict[str, Any]:
     }
 
 
-def train(config: Config, task: Task) -> None:
+def train(config: Config, task: Task) -> dict[str, Any]:
     if config.debug_image_tag:
         os.environ[DEBUG_OPTIONS_ENV] = "1"
         logger.info("Using debug image_tag=%s", config.debug_image_tag)
@@ -104,9 +93,7 @@ def train(config: Config, task: Task) -> None:
     batch_size = int(training.get("train_batch_size"))
     max_seq_len = int(training.get("max_seq_len"))
     learning_rate = float((training.get("optimizer") or {}).get("lr"))
-    model_provider = str(training.get("model_provider") or "huggingface")
     model_name = training_sub.get("model_name")
-    chunked_logprob_loss = _uses_chunked_logprob_loss(training)
 
     tokenizer, renderer, renderer_name = build_renderer(
         model_name,
@@ -119,7 +106,6 @@ def train(config: Config, task: Task) -> None:
         renderer_name,
         config.enable_thinking,
     )
-    next_token_labels = use_next_token_labels(model_provider) or chunked_logprob_loss
 
     logger.info("Loading %s dataset...", task.name)
     train_dataset = task.load_dataset(n_train=config.max_steps * batch_size)
@@ -159,7 +145,6 @@ def train(config: Config, task: Task) -> None:
                     row,
                     renderer,
                     max_seq_len=max_seq_len,
-                    next_token_labels=next_token_labels,
                 )
                 for row in batch_rows
             ]
@@ -168,17 +153,14 @@ def train(config: Config, task: Task) -> None:
                 pad_token_id=pad_token_id,
                 max_seq_len=max_seq_len,
                 pad_to_max_seq_len=config.pad_to_max_length,
-                with_rl_context=chunked_logprob_loss,
             )
             fwd_bwd_result, step_result = forward_backward_step(
                 client,
                 job_id,
                 kwargs,
-                context=context or None,
+                context=context,
                 learning_rate=current_lr,
-                processing=(
-                    _chunked_causal_cross_entropy() if chunked_logprob_loss else None
-                ),
+                processing=causal_cross_entropy_processing(),
             )
 
             train_loss = float(fwd_bwd_result["avg_loss"])
@@ -186,6 +168,7 @@ def train(config: Config, task: Task) -> None:
             metrics.update(step_result.get("metrics") or {})
             metrics.update(
                 train_nll=train_loss,
+                loss_weight_sum=float(context["loss_mask"].sum()),
                 global_steps=step_result.get("global_steps", step + 1),
                 progress=step / n_train_batches,
                 time_total=time.time() - start_time,
@@ -208,3 +191,4 @@ def train(config: Config, task: Task) -> None:
 
     ml_logger.close()
     logger.info("Training completed")
+    return {"job_id": job_id, "checkpoint_id": saved["weights-only"].get("checkpoint_id")}

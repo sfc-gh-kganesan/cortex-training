@@ -77,9 +77,13 @@ class SessionTokenProvider(Protocol):
 
 def _flush_emitters_at_exit() -> None:
     deadline = time.monotonic() + 1.0
-    for emitter in list(_EMITTERS):
-        remaining = max(deadline - time.monotonic(), 0.0)
-        emitter.close(timeout=remaining)
+    try:
+        for emitter in list(_EMITTERS):
+            remaining = max(deadline - time.monotonic(), 0.0)
+            emitter.close(timeout=remaining)
+    except KeyboardInterrupt:
+        # A second Ctrl-C while exiting gives up on the flush quietly.
+        return
 
 
 atexit.register(_flush_emitters_at_exit)
@@ -325,7 +329,12 @@ class OtlpMetricEmitter:
                 return self._telemetry_base_url
             response = self._session.get(
                 f"{self.base_url}/observability/system/hostname",
-                headers={"Authorization": f'Snowflake Token="{token}"'},
+                headers={
+                    "Authorization": f'Snowflake Token="{token}"',
+                    # The endpoint answers 500 without an explicit JSON Accept
+                    # header, which silently disables all telemetry.
+                    "Accept": "application/json",
+                },
                 timeout=self.timeout,
             )
             response.raise_for_status()

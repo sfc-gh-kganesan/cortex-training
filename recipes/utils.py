@@ -37,7 +37,6 @@ from cortex_training import wire
 logger = logging.getLogger(__name__)
 
 
-IGNORE_INDEX = -100
 _ROUTER_REPLAY_DEFAULT_MAX_CACHE_BYTES = 16 * 1024**3
 LORA_TARGET_MODULES = (
     "q_proj",
@@ -452,27 +451,23 @@ def discard_router_replay(
 @dataclass
 class TrainSequence:
     input_ids: list[int]
-    labels: list[int]
-    advantage: float = 0.0
+    # loss_mask[i] weights logits[i] predicting input_ids[i + 1].
+    loss_mask: list[float]
+    # Sent as ``advantages`` for RL losses; supervised sequences leave it None.
+    advantage: float | None = None
 
     def __post_init__(self) -> None:
-        if len(self.input_ids) != len(self.labels):
+        if len(self.loss_mask) != len(self.input_ids):
             raise ValueError(
-                f"input_ids ({len(self.input_ids)}) and labels ({len(self.labels)}) must have the same length"
+                f"loss_mask ({len(self.loss_mask)}) and input_ids ({len(self.input_ids)}) must have the same length"
             )
 
 
-def use_next_token_labels(model_provider: str) -> bool:
-    """Whether SFT labels should already be next-token targets.
-
-    HuggingFace and Liger CausalLM loss shift ``labels`` internally. Cortex Training
-    SP SFT does the same shift in ``prepare_sft_request_labels``. Those
-    providers need labels aligned with ``input_ids``.
-
-    prime_rl fused CE compares ``logits[i]`` to ``labels[i]`` and does not
-    shift, so it needs next-token labels.
-    """
-    return model_provider == "prime_rl"
+def next_token_loss_mask(token_weights: Sequence[float]) -> list[float]:
+    loss_mask = [0.0] * len(token_weights)
+    for position in range(len(token_weights) - 1):
+        loss_mask[position] = float(token_weights[position + 1])
+    return loss_mask
 
 
 def sequence_from_conversation(
@@ -480,7 +475,6 @@ def sequence_from_conversation(
     renderer: Any,
     train_on_what: Any,
     max_seq_len: int | None = None,
-    next_token_labels: bool = False,
 ) -> TrainSequence:
     """Render a chat conversation straight into Cortex Training's forward-backward shape.
 
@@ -491,6 +485,9 @@ def sequence_from_conversation(
     all -- ``apply_chat_template(return_assistant_tokens_mask=True)`` only works
     for templates carrying ``{% generation %}`` markers, and Qwen3's does not
     (HF then returns an all-zero mask).
+
+    The returned ``loss_mask`` carries the renderer weight of token ``i + 1`` at
+    position ``i``, the alignment ``causal_cross_entropy`` expects.
     """
     model_input, weights = renderer.build_supervised_example(list(messages), train_on_what=train_on_what)
     token_ids = [int(token) for token in model_input.to_ints()]
@@ -504,16 +501,7 @@ def sequence_from_conversation(
     if len(token_ids) < 2:
         raise ValueError("need at least 2 tokens to build a training sequence")
 
-    labels = [IGNORE_INDEX] * len(token_ids)
-    if next_token_labels:
-        for position in range(len(token_ids) - 1):
-            if token_weights[position + 1] > 0.0:
-                labels[position] = token_ids[position + 1]
-    else:
-        for position, (token_id, weight) in enumerate(zip(token_ids, token_weights)):
-            if weight > 0.0:
-                labels[position] = token_id
-    return TrainSequence(input_ids=token_ids, labels=labels)
+    return TrainSequence(input_ids=token_ids, loss_mask=next_token_loss_mask(token_weights))
 
 
 def sequence_from_rollout(
@@ -527,12 +515,8 @@ def sequence_from_rollout(
         raise ValueError("sampled_tokens must be non-empty")
 
     tokens = [int(token) for token in prompt_tokens] + [int(token) for token in sampled_tokens]
-    n_prompt = len(prompt_tokens)
-    labels = [IGNORE_INDEX] * len(tokens)
-    for offset in range(len(sampled_tokens)):
-        position = n_prompt - 1 + offset
-        labels[position] = tokens[position + 1]
-    return TrainSequence(input_ids=tokens, labels=labels, advantage=advantage)
+    loss_mask = [0.0] * (len(prompt_tokens) - 1) + [1.0] * len(sampled_tokens) + [0.0]
+    return TrainSequence(input_ids=tokens, loss_mask=loss_mask, advantage=advantage)
 
 
 def collate(
@@ -540,12 +524,14 @@ def collate(
     pad_token_id: int,
     max_seq_len: int,
     pad_to_max_seq_len: bool = False,
-    with_rl_context: bool = False,
     temperature: float | None = None,
 ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
 
     if len(sequences) == 0:
         raise ValueError("collate needs at least one sequence")
+    with_advantages = sequences[0].advantage is not None
+    if any((sequence.advantage is not None) != with_advantages for sequence in sequences):
+        raise ValueError("collate cannot mix sequences with and without an advantage")
 
     longest = max(len(sequence.input_ids) for sequence in sequences)
     if longest > max_seq_len:
@@ -559,7 +545,6 @@ def collate(
 
     input_ids: list[list[int]] = []
     attention_mask: list[list[int]] = []
-    labels: list[list[int]] = []
     advantages: list[list[float]] = []
     loss_mask: list[list[float]] = []
 
@@ -567,12 +552,10 @@ def collate(
         padding = width - len(sequence.input_ids)
         input_ids.append(sequence.input_ids + [pad_token_id] * padding)
         attention_mask.append([1] * len(sequence.input_ids) + [0] * padding)
-        padded_labels = sequence.labels + [IGNORE_INDEX] * padding
-        labels.append(padded_labels)
-        if with_rl_context:
-            mask = [1.0 if label != IGNORE_INDEX else 0.0 for label in padded_labels]
-            loss_mask.append(mask)
-            advantages.append([sequence.advantage * m for m in mask])
+        mask = [float(weight) for weight in sequence.loss_mask] + [0.0] * padding
+        loss_mask.append(mask)
+        if with_advantages:
+            advantages.append([sequence.advantage if weight > 0.0 else 0.0 for weight in mask])
 
     kwargs: dict[str, Any] = dict(
         input_ids=torch.tensor(input_ids, dtype=torch.long),
@@ -586,15 +569,12 @@ def collate(
             float(temperature),
             dtype=torch.float32,
         )
-    context: dict[str, torch.Tensor] = {}
-    if with_rl_context:
-        context = dict(
-            input_ids=kwargs["input_ids"],
-            advantages=torch.tensor(advantages, dtype=torch.float32),
-            loss_mask=torch.tensor(loss_mask, dtype=torch.float32),
-        )
-    else:
-        kwargs["labels"] = torch.tensor(labels, dtype=torch.long)
+    context: dict[str, torch.Tensor] = dict(
+        input_ids=kwargs["input_ids"],
+        loss_mask=torch.tensor(loss_mask, dtype=torch.float32),
+    )
+    if with_advantages:
+        context["advantages"] = torch.tensor(advantages, dtype=torch.float32)
 
     return kwargs, context
 

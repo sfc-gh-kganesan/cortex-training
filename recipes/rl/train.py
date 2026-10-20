@@ -351,7 +351,6 @@ def _train(config: Config, task: Task) -> None:
                     datums_D,
                     pad_token_id=pad_token_id,
                     max_seq_len=max_seq_len,
-                    with_rl_context=True,
                     temperature=config.temperature,
                 )
                 fwd_bwd_result, step_result = forward_backward_step(

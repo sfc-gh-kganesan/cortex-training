@@ -17,8 +17,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from pathlib import Path
 
 import chz
 from recipes.utils import build_renderer
@@ -33,6 +35,30 @@ from recipes.inference.prompts import render_user_prompt
 from cortex_training.client import DEBUG_OPTIONS_ENV
 
 logger = logging.getLogger(__name__)
+
+
+def _load_prompt_rows(path: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for index, line in enumerate(Path(path).expanduser().read_text().splitlines()):
+        if not line.strip():
+            continue
+        obj = json.loads(line)
+        prompt = obj.get("prompt")
+        if not prompt and isinstance(obj.get("messages"), list):
+            prompt = obj["messages"][0].get("content")
+        if not prompt:
+            raise ValueError(f"{path}:{index + 1} needs a prompt or messages[0].content")
+        rows.append(
+            {
+                "id": str(obj.get("id") or f"prompt-{index:03d}"),
+                "category": str(obj.get("category") or ""),
+                "split": str(obj.get("split") or ""),
+                "prompt": str(prompt),
+            }
+        )
+    if not rows:
+        raise ValueError(f"{path} has no prompts")
+    return rows
 logging.getLogger("httpx").setLevel(logging.WARN)
 logging.getLogger("urllib3").setLevel(logging.WARN)
 logging.getLogger("tinker_cookbook.renderers.base").setLevel(logging.ERROR)
@@ -56,6 +82,10 @@ class Config:
     renderer_name: str | None = None
 
     prompt: str = "How many r's are in strawberry?"
+    # JSONL with a ``prompt`` field (or chat ``messages``). Overrides ``prompt``.
+    prompts_file: str | None = None
+    out: str | None = None
+    generate_batch_size: int = 16
     max_tokens: int = 512
     temperature: float = 0.6
     top_p: float = 1.0
@@ -101,17 +131,36 @@ def main(config: Config):
         "top_p": config.top_p,
         **stop_params_for(renderer.get_stop_sequences()),
     }
-    prompt_tokens = render_user_prompt(renderer, config.prompt)
+    prompt_rows = (
+        _load_prompt_rows(config.prompts_file)
+        if config.prompts_file
+        else [{"id": "prompt-000", "category": "", "split": "", "prompt": config.prompt}]
+    )
+    prompt_tokens = [render_user_prompt(renderer, row["prompt"]) for row in prompt_rows]
     with running_job(client, body, job_id=config.job_id, keep_job=config.keep_job) as job_id:
-        results = generate_results(client, job_id, [prompt_tokens], sampling_params, batch_size=1)
-        raw = completion_text(results[0])
-        logger.info("Prompt: %s", config.prompt)
-        logger.info(
-            "Renderer: %s (enable_thinking=%s)",
-            renderer_name,
-            config.enable_thinking,
+        results = generate_results(
+            client,
+            job_id,
+            prompt_tokens,
+            sampling_params,
+            batch_size=config.generate_batch_size if config.prompts_file else 1,
         )
-        logger.info("Completion:\n%s", raw)
+        records = []
+        for row, result in zip(prompt_rows, results):
+            text = completion_text(result)
+            records.append({**row, "completion": text})
+            logger.info("Prompt: %s", row["prompt"])
+            logger.info(
+                "Renderer: %s (enable_thinking=%s)",
+                renderer_name,
+                config.enable_thinking,
+            )
+            logger.info("Completion:\n%s", text)
+        if config.out:
+            out_path = Path(config.out).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text("".join(json.dumps(record) + "\n" for record in records))
+            logger.info("Wrote %d completions to %s", len(records), out_path)
 
 
 if __name__ == "__main__":

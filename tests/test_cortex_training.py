@@ -152,7 +152,9 @@ def test_success_output_exit_code_and_client_arguments():
     assert stderr == ""
     assert '"job_id": "j1"' in stdout
     assert args["command"] == "list"
-    assert client.status_filter == "running"
+    assert args["status"] == "running"
+    # list applies --status to the schema's rows itself.
+    assert client.status_filter is None
 
 
 def _run_invalid_submit(path: Path):

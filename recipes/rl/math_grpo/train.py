@@ -30,7 +30,7 @@ class Config:
     top_p: float = 1.0
     format_coef: float = FORMAT_COEF
 
-    max_steps: int | None = None
+    max_steps: int = 10
     eps_clip: float = 0.2
     loss_agg_mode: str = "token-mean"
     entropy_coeff: float = 0.0

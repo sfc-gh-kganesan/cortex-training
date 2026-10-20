@@ -107,6 +107,8 @@ def test_catalog_models_include_license_links():
 def test_shipped_qwen_recipes_use_model_limits_and_long_context_sp():
     expected_limits = {
         "Qwen/Qwen3-8B": 32768,
+        "Qwen/Qwen3.5-9B": 65536,
+        "Qwen/Qwen3.8-27B": 65536,
         "Qwen/Qwen3.6-35B-A3B": 262144,
     }
     config_paths = [
@@ -115,7 +117,7 @@ def test_shipped_qwen_recipes_use_model_limits_and_long_context_sp():
         *REPO_ROOT.glob("recipes/sft/configs/qwen*.json"),
     ]
 
-    assert len(config_paths) == 12
+    assert len(config_paths) == 20
     for path in config_paths:
         request = json.loads(path.read_text())
         for sub_job in request["sub_job_configs"]:
@@ -126,16 +128,15 @@ def test_shipped_qwen_recipes_use_model_limits_and_long_context_sp():
                 ds_config = config["ds_config"]
                 sp_size = config.get("sp_size", 1)
                 logical_dp = config["n_gpus"] // sp_size
-                assert config["train_batch_size"] == ds_config["train_batch_size"]
-                assert config["train_batch_size"] == (
-                    logical_dp
-                    * ds_config["train_micro_batch_size_per_gpu"]
-                    * ds_config["gradient_accumulation_steps"]
-                )
+                assert config["train_batch_size"] == logical_dp
+                assert {
+                    "train_batch_size",
+                    "train_micro_batch_size_per_gpu",
+                    "gradient_accumulation_steps",
+                }.isdisjoint(ds_config)
             if model_id == "Qwen/Qwen3.6-35B-A3B" and sub_job["job_type"] == "training":
                 assert config["sp_size"] == 8
                 assert config["train_batch_size"] == 1
-                assert config["ds_config"]["train_batch_size"] == 1
 
 
 @pytest.mark.parametrize(

@@ -17,6 +17,10 @@
           "mode": "full",
           "freq": 1
         },
+        "prime_rl": {
+          "fused_lm_head_token_chunk_size": 8192,
+          "fused_cross_entropy": false
+        },
         "ep_size": 4,
         "optimizer": {
           "name": "AdamW",
@@ -29,9 +33,6 @@
           "eps": 1e-08
         },
         "ds_config": {
-          "train_batch_size": 1,
-          "train_micro_batch_size_per_gpu": 1,
-          "gradient_accumulation_steps": 1,
           "zero_optimization": {
             "stage": 2
           },

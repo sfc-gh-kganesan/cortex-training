@@ -83,6 +83,7 @@ def test_hoisted_config_paths_resolve_outside_repo(
     [
         "recipes/sft/conversational/train.py",
         "recipes/rl/math_grpo/train.py",
+        "recipes/distillation/on_policy/train.py",
     ],
 )
 def test_task_modules_are_entrypoints(relative_path):
@@ -97,6 +98,7 @@ def test_task_modules_are_entrypoints(relative_path):
     [
         "recipes/sft/train.py",
         "recipes/rl/train.py",
+        "recipes/distillation/train.py",
     ],
 )
 def test_shared_runners_are_task_agnostic_libraries(relative_path):

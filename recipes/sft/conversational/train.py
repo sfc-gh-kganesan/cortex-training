@@ -1,5 +1,7 @@
 """Conversational task entrypoint for the shared SFT runner."""
 
+from typing import Any
+
 import chz
 from recipes.sft.tasks.conversational import ConversationalTask
 from recipes.sft.tasks.conversational import BUILTIN_CHAT_DATASETS
@@ -9,8 +11,7 @@ from recipes.sft.tasks.conversational import is_who_trained_you_dataset
 from recipes.sft.tasks.conversational import load_chat_dataset
 from recipes.sft.tasks.conversational import resolve_chat_dataset
 from recipes.sft.tasks.conversational import tile_rows
-from recipes.sft.train import _chunked_causal_cross_entropy
-from recipes.sft.train import _uses_chunked_logprob_loss
+from recipes.sft.train import causal_cross_entropy_processing
 from recipes.sft.train import job_body
 from recipes.sft.train import train
 from tinker_cookbook import renderers
@@ -39,21 +40,20 @@ class Config:
     job_config: str = "configs/qwen3_8b_full.json"
 
 
-def main(config: Config) -> None:
+def main(config: Config) -> dict[str, Any]:
     task = ConversationalTask(
         dataset=config.dataset,
         dataset_split=config.dataset_split,
         train_on_what=config.train_on_what,
     )
-    train(config, task)
+    return train(config, task)
 
 
 __all__ = [
     "BUILTIN_CHAT_DATASETS",
     "WHO_TRAINED_YOU_PROMPT",
-    "_chunked_causal_cross_entropy",
     "_is_local_chat_file",
-    "_uses_chunked_logprob_loss",
+    "causal_cross_entropy_processing",
     "Config",
     "ConversationalTask",
     "is_who_trained_you_dataset",
