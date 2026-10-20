@@ -45,7 +45,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone --branch skyrl-v0.3.0 --depth 1 https://github.com/NovaSky-AI/SkyRL
 export SKYRL_HOME=$PWD/SkyRL
 
-git clone --branch karthik/openhands-cortex https://github.com/Snowflake-AI-Research/Arctic-Platform
+git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
 cd Arctic-Platform
 ```
 
@@ -99,5 +99,5 @@ job after 30 idle minutes; set `ARCTIC_CORTEX_IDLE_TIMEOUT_SECONDS` (at least
 300) to shorten that.
 
 The
-[recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/karthik/openhands-cortex/recipes/rl/openhands/code_localization/README.md)
+[recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/openhands/code_localization/README.md)
 has every setting and the source commits.
