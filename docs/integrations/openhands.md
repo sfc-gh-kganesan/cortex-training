@@ -43,19 +43,17 @@ export SKYRL_HOME=$PWD/SkyRL
 git clone --branch karthik/openhands-cortex https://github.com/Snowflake-AI-Research/Arctic-Platform
 ```
 
-Download the tasks, the SWE-smith split from
-[CodeScout `data/swe_smith`](https://github.com/18jeffreyma/codescout/tree/abab719e08a55dde78c6da864cd24d84fd47bdf2/data/swe_smith)
-(39,187 training and 100 validation instances):
+The tasks come from the Hugging Face dataset
+[`OpenHands/SWE-smith-py-code-search`](https://huggingface.co/datasets/OpenHands/SWE-smith-py-code-search).
+From the `Arctic-Platform` checkout, download it and write the training files:
 
 ```bash
-mkdir -p ~/data/swe-smith-localization
-for split in train validation; do
-  curl -fL -o ~/data/swe-smith-localization/$split.parquet \
-    https://raw.githubusercontent.com/18jeffreyma/codescout/abab719e08a55dde78c6da864cd24d84fd47bdf2/data/swe_smith/$split.parquet
-done
+uv run recipes/rl/openhands/code_localization/prepare_data.py
 ```
 
-The run script reads them from there. To keep them elsewhere, set `DATA_DIR`.
+That writes 39,187 training and 100 validation rows to
+`~/data/swe-smith-localization`, where the run script reads them. To keep them
+elsewhere, pass `--out DIR` and set `DATA_DIR=DIR` when you run.
 
 ## Run
 
