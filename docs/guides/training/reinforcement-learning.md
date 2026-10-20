@@ -16,9 +16,10 @@ with its trainer on a CPU driver and training and sampling in Cortex sub-jobs.
 Its GSM8K example lives in the Arctic Platform repository and has its own
 install.
 
-[OpenHands](../../integrations/openhands.md) is the harness for a
-code-localization agent on the same Cortex split: SkyRL on a CPU driver,
-training and sampling in Cortex sub-jobs. The agent and reward live in the
-Arctic Platform repository.
+To train a model inside an agent you already have, see
+[Bring your own agent](../../integrations/bring-your-own-agent.md). The agent
+keeps its own loop and sends model calls to a per-rollout endpoint; SkyRL and
+Cortex do the training. [OpenHands](../../integrations/openhands.md) is the
+worked example.
 
 Additional code, tool-use, and multi-agent RL recipes are planned.
