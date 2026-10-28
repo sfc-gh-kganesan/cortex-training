@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_PATHS = (
     "README.md",
     "docs/getting-started/setup.md",
+    "docs/reference/model-compatibility.md",
     "model-catalog/README.md",
     "recipes/README.md",
     "recipes/api_quickstart/README.md",
