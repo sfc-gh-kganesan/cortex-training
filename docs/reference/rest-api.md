@@ -1243,7 +1243,7 @@ re-tokenizing it: send the sequence as a pre-tokenized prompt with
 `max_tokens: 1` and read `prompt_logprobs[i]` as the log probability of prompt
 token `i`. The prompt must stay shorter than the sampling sub-job's
 `max_seq_len`. The
-[on-policy distillation example](../../examples/distillation/README.md) scores
+[on-policy distillation example](../../recipes/distillation/README.md) scores
 student rollouts with a teacher this way.
 
 ### 6.7 Streaming generate - `POST /{job_id}/generate-stream`
@@ -1782,7 +1782,7 @@ repository's RL example fills in `5368709120` (5 GiB) for training and
 `21474836480` (20 GiB) for sampling on MoE models, and describes an optional
 planner that sizes a cap from the expert count, sequence length, MoE layer
 count, and top-k; see
-[Router-replay capacity planning](../../examples/rl/README.md#router-replay-capacity-planning).
+[Router-replay capacity planning](../../recipes/rl_quickstart/README.md#router-replay-capacity-planning).
 
 `extra_training["model_provider"] = "dflash2"` trains a DFlash2
 speculative-decoding draft against a frozen target. Its options and rules are in
@@ -3425,7 +3425,7 @@ deployment's database and schema (`model_deployment_base_url`).
 
 A checkpoint source is `{"type": "checkpoint", "job_id": ..., "checkpoint_id": ...}`
 and must name a completed `weights-only` checkpoint
-(`examples/api/model-deployment-checkpoint.json`). It names no model: the
+(`recipes/api_quickstart/model-deployment-checkpoint.json`). It names no model: the
 server already knows the source job's model and rejects one that does not
 match it, so `create` reads the training sub-job's `model_name` from
 `GET /{source job_id}` and sends that. `model` is rejected as an unknown key.
@@ -3595,7 +3595,7 @@ raised unchanged.
 `CortexTrainingClient` does not call the deployment itself; any
 OpenAI-compatible client does. This is the behavior a caller sees, as checked
 by the `test_tc6_*` cases in `tests/test_model_deployment_e2e.py`. The
-streaming example (`examples/model_deployment/streaming.py`) codes against it.
+streaming example (`recipes/model_deployment/streaming.py`) codes against it.
 
 | Item | Behavior |
 |---|---|

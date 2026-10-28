@@ -28,7 +28,7 @@ DEBUG_IMAGE_TAG = os.environ.get("DEBUG_IMAGE_TAG")
 # Per example. CI runs all of them within a fixed total budget.
 TIMEOUT_SECONDS = 3600
 
-# The eval tasks, sandbox packages, and reference predictions examples/sft/dare/README.md sets up.
+# The eval tasks, sandbox packages, and reference predictions recipes/sft_quickstart/dare/README.md sets up.
 DARE_BENCH_URL = "https://github.com/Snowflake-Labs/dare-bench"
 DARE_BENCH_COMMIT = "01447145304c67b861a004ada6d86f29640de61a"
 DARE_SANDBOX_PACKAGES = [
@@ -42,7 +42,7 @@ DARE_TASK_TYPE = "regression"
 # and {bench_dir} and {sandbox_python} come from the dare_bench fixture.
 EXAMPLES = {
     "sft": (
-        "examples.sft.conversational.train",
+        "recipes.sft_quickstart.conversational.train",
         ["max_steps=2", "max_seq_len=1024", "train_batch_size=4", "log_path={log_path}"],
     ),
     # The only LoRA run on a hybrid-attention model: the others are dense plain-attention
@@ -53,24 +53,24 @@ EXAMPLES = {
          "train_batch_size=8", "log_path={log_path}"],
     ),
     "rl": (
-        "examples.rl.math_grpo.train",
+        "recipes.rl_quickstart.math_grpo.train",
         ["max_steps=2", "problems_per_batch=4", "group_size=4", "max_tokens=512",
          "eval_every=1", "n_test=16", "eval_max_tokens=512", "log_path={log_path}"],
     ),
     "generate": (
-        "examples.inference.generate",
+        "recipes.inference.generate",
         ["max_tokens=64"],
     ),
     "evaluate": (
-        "examples.inference.evaluate",
+        "recipes.inference.evaluate",
         ["task=gsm8k", "max_examples=16", "max_tokens=512", "temperature=0"],
     ),
     "serve": (
-        "examples.inference.serve",
+        "recipes.inference.serve",
         ["keep_job=false"],
     ),
     "distillation": (
-        "examples.distillation.on_policy.train",
+        "recipes.distillation.on_policy.train",
         ["max_steps=2", "problems_per_batch=4", "group_size=2", "max_tokens=256",
          "eval_max_tokens=256", "eval_every=1", "n_val=16", "n_test=32",
          "n_kl_eval=8", "warmup_steps=0", "log_path={log_path}"],
@@ -78,18 +78,18 @@ EXAMPLES = {
     # Two steps, with valid_nll before and after. DARE trains on 8 data-parallel
     # GPUs, and the server rejects a batch smaller than that.
     "dare_train": (
-        "examples.sft.dare.train",
+        "recipes.sft_quickstart.dare.train",
         ["max_steps=2", "train_batch_size=8", "eval_every=2", "log_path={log_path}"],
     ),
     # Base model on two v1 (reference-scored) tasks.
     "dare_evaluate": (
-        "examples.sft.dare.evaluate",
+        "recipes.sft_quickstart.dare.evaluate",
         ["bench_dir={bench_dir}", "sandbox_python={sandbox_python}", "versions=v1",
          f"task_types={DARE_TASK_TYPE}", "max_examples=2", "log_path={log_path}"],
     ),
     # Heaviest case (MoE, long context, ~16 GPUs), so it runs last.
     "rl_moe": (
-        "examples.rl.math_grpo.train",
+        "recipes.rl_quickstart.math_grpo.train",
         ["model=Qwen/Qwen3.6-35B-A3B", "context=long", "lora=true", "max_steps=2",
          "problems_per_batch=4", "group_size=4", "max_tokens=2048", "eval_every=1",
          "n_test=16", "eval_max_tokens=2048", "log_path={log_path}"],

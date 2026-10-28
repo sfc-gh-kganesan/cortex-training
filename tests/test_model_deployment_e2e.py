@@ -245,7 +245,7 @@ def test_tc6_base_url_serves_openai_chat_completions(ready_deployment):
     strict=False,
 )
 def test_tc6_models_lists_the_ready_deployment(ready_deployment):
-    from examples.model_deployment.streaming import deployment_headers
+    from recipes.model_deployment.streaming import deployment_headers
 
     models = requests.get(
         f"{ready_deployment['base_url']}/models",
@@ -266,7 +266,7 @@ def deployment_pat() -> str:
 
 
 def test_tc6_base_url_streams_chat_completions_as_sse(ready_deployment):
-    from examples.model_deployment.streaming import deployment_headers, iter_sse_chunks
+    from recipes.model_deployment.streaming import deployment_headers, iter_sse_chunks
 
     deployment_id = ready_deployment["deployment"]
     with requests.post(
@@ -306,7 +306,7 @@ def test_tc6_base_url_streams_chat_completions_as_sse(ready_deployment):
 
 
 def test_tc6_example_stream_chat_reads_the_deployment(ready_deployment):
-    from examples.model_deployment.streaming import chat_messages, stream_chat
+    from recipes.model_deployment.streaming import chat_messages, stream_chat
 
     deltas: list[str] = []
     try:
@@ -333,7 +333,7 @@ def test_tc6_example_stream_chat_reads_the_deployment(ready_deployment):
 
 
 def test_tc6_max_tokens_is_rejected_in_favor_of_max_completion_tokens(ready_deployment):
-    from examples.model_deployment.streaming import deployment_headers
+    from recipes.model_deployment.streaming import deployment_headers
 
     response = requests.post(
         f"{ready_deployment['base_url']}/chat/completions",

@@ -12,11 +12,11 @@ the Cortex Training client.
   [full fine-tuning](guides/training/full-finetuning.md),
   [reinforcement learning](guides/training/reinforcement-learning.md) and
   [starting from your own weights](guides/training/external-weights.md), plus the
-  [runnable examples](../examples/README.md).
+  [runnable examples](../recipes/README.md).
 - Inference users: [deploy a model for streaming inference](guides/inference/deploy-model.md)
   behind an OpenAI-compatible endpoint, or
   [serve a training checkpoint](guides/inference/serve-checkpoint.md).
-- Framework users: see the [framework examples](../examples/frameworks/README.md) for
+- Framework users: see the [framework examples](../recipes/README.md) for
   RL frameworks integrated with Cortex.
 - Operators: see [job management](guides/operations/manage-jobs.md) and
   [logs and metrics](guides/operations/logs-and-metrics.md).

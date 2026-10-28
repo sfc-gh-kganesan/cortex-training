@@ -167,12 +167,12 @@ qualified stage path including its leading `@`:
 ```
 
 The repository contains this request as
-[`examples/api/external-weights-training.json`](../../../examples/api/external-weights-training.json).
+[`recipes/api_quickstart/external-weights-training.json`](../../../recipes/api_quickstart/external-weights-training.json).
 After replacing the stage path and adapting the model configuration, submit it
 like any other job:
 
 ```bash
-cortex-training submit examples/api/external-weights-training.json --wait
+cortex-training submit recipes/api_quickstart/external-weights-training.json --wait
 ```
 
 The Python SDK uses the same request field:

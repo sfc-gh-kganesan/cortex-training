@@ -42,7 +42,7 @@ Fine-tune a chat model in one command:
 
 ```bash
 uv pip install 'tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@nightly'
-python -m examples.sft.conversational.train \
+python -m recipes.sft_quickstart.conversational.train \
   config=~/cortex-training-config.json \
   max_steps=50
 ```
@@ -50,7 +50,7 @@ python -m examples.sft.conversational.train \
 `config=` is the JSON connection file described in
 [setup](docs/getting-started/setup.md#json-connection-file). This
 fine-tunes Qwen3-8B (full-parameter, four H200 GPUs) on a small bundled
-dataset. See the [Conversational SFT example](examples/sft/README.md) for all
+dataset. See the [Conversational SFT example](recipes/sft_quickstart/README.md) for all
 options.
 
 ### **CLI Mode**
@@ -59,16 +59,16 @@ The CLI runs the same step-level operations the examples call, one at a time:
 
 ```bash
 cortex-training models                                           # list active configured models
-cortex-training submit examples/api/rl.json --wait               # training + sampling job
-cortex-training --job JOB_ID fwd-bwd examples/api/fwd-bwd.json   # forward-backward pass
+cortex-training submit recipes/api_quickstart/rl.json --wait               # training + sampling job
+cortex-training --job JOB_ID fwd-bwd recipes/api_quickstart/fwd-bwd.json   # forward-backward pass
 cortex-training --job JOB_ID step --lr 1e-4                      # optimizer step
-cortex-training --job JOB_ID generate examples/api/generate.json # sample from the model
+cortex-training --job JOB_ID generate recipes/api_quickstart/generate.json # sample from the model
 cortex-training cancel JOB_ID                                    # release GPUs
 ```
 
 See the [CLI reference](docs/reference/cli.md) for the full command set. To use
 an existing RL framework like SkyRL, see
-[framework integrations](examples/frameworks/README.md).
+[framework integrations](recipes/README.md).
 
 ## Examples
 
@@ -77,11 +77,11 @@ is or customize. Each builds its job from the
 [model catalog](model-catalog/README.md), which holds a tuned job file for each
 supported model, context and GPU type.
 
-- **[Conversational SFT](examples/sft/README.md)**: supervised fine-tuning on chat datasets with LoRA or full-parameter training.
-- **[Math GRPO](examples/rl/README.md)**: reinforcement learning for mathematical reasoning with verifiable rewards.
-- **[Inference](examples/inference/README.md)**: serve a model or checkpoint, generate responses, and evaluate.
+- **[Conversational SFT](recipes/sft_quickstart/README.md)**: supervised fine-tuning on chat datasets with LoRA or full-parameter training.
+- **[Math GRPO](recipes/rl_quickstart/README.md)**: reinforcement learning for mathematical reasoning with verifiable rewards.
+- **[Inference](recipes/inference/README.md)**: serve a model or checkpoint, generate responses, and evaluate.
 
-The [example index](examples/README.md) lists every example and explains how to
+The [example index](recipes/README.md) lists every example and explains how to
 customize the job.
 
 ## Documentation
@@ -92,7 +92,7 @@ customize the job.
 - [Python SDK reference](docs/reference/python-sdk.md): CortexTrainingClient API for programmatic workflows
 - [REST API reference](docs/reference/rest-api.md): HTTP endpoints and wire format
 - [Model compatibility](docs/reference/model-compatibility.md): supported models, methods, and hardware configurations
-- [Framework integrations](examples/frameworks/README.md): run SkyRL, tinker-cookbook, or your own agent on Cortex Training
+- [Framework integrations](recipes/README.md): run SkyRL, tinker-cookbook, or your own agent on Cortex Training
 
 ## Development
 

@@ -1,11 +1,11 @@
 # Serve a Training Checkpoint
 
-The [inference example](../../../examples/inference/README.md) creates a standalone
+The [inference example](../../../recipes/inference/README.md) creates a standalone
 sampling endpoint, either from original Hugging Face weights or from a
 weights-only checkpoint produced by a training run:
 
 ```bash
-python -m examples.inference.serve \
+python -m recipes.inference.serve \
   config=/path/to/config.json \
   model=MODEL context=CONTEXT hardware=HARDWARE lora=LORA \
   source_job_id=TRAINING_JOB_ID \
@@ -14,9 +14,9 @@ python -m examples.inference.serve \
 
 The SFT and RL examples print a generate or evaluate command with these
 arguments filled in after they save. Distillation logs only the checkpoint ID;
-see its [serve command](../../../examples/distillation/README.md#checkpoint-and-evaluation).
+see its [serve command](../../../recipes/distillation/README.md#checkpoint-and-evaluation).
 To pick the arguments by hand, see
-[Serve](../../../examples/inference/README.md#serve).
+[Serve](../../../recipes/inference/README.md#serve).
 
 Sampling requires a `weights-only` checkpoint; resumable checkpoints carry
 optimizer state and are not loadable by the sampling runtime. The sampling job is

@@ -1,10 +1,10 @@
 # Example Template
 
 Each runnable example has its own folder next to the shared loop it uses. An RL
-task, for example, goes in `examples/rl/<task>/` and reuses `examples/rl/runner.py`:
+task, for example, goes in `recipes/rl_quickstart/<task>/` and reuses `recipes/rl_quickstart/runner.py`:
 
 ```text
-examples/rl/
+recipes/rl_quickstart/
 ├── runner.py               # shared loop
 ├── overrides.json          # config changes for every RL run
 └── <task>/
@@ -19,23 +19,23 @@ examples/rl/
 ## Code
 
 - Build the job with `build_job` (or `make_distillation_config` for a student
-  and a teacher) from `examples/utils.py`, and ship no job files. See
-  [How an example builds its job](../../examples/README.md#how-an-example-builds-its-job).
+  and a teacher) from `recipes/utils.py`, and ship no job files. See
+  [How an example builds its job](../../recipes/README.md#how-an-example-builds-its-job).
 - Give `Config` the same job arguments as the existing entry point of its
   kind, so commands stay uniform: copy them from
-  `examples/sft/conversational/train.py` (training), `examples/inference/serve.py`
-  (inference endpoint), or `examples/distillation/on_policy/train.py` (a
+  `recipes/sft_quickstart/conversational/train.py` (training), `recipes/inference/serve.py`
+  (inference endpoint), or `recipes/distillation/on_policy/train.py` (a
   student and a teacher model). A job-field override such as `lr=` defaults to
   `None`, which keeps the job's value, unless the example needs its own
-  default, as `examples/sft/dare/train.py` does.
+  default, as `recipes/sft_quickstart/dare/train.py` does.
 - Keep task code in `task.py`. Import shared helpers from `runner.py` and
-  `examples/utils.py`. A helper that another module uses is public (no leading
+  `recipes/utils.py`. A helper that another module uses is public (no leading
   underscore).
 - Add tests for local validation logic where practical.
 
 ## README
 
-Cover these, briefly, and link to `examples/README.md` and `docs/` for anything
+Cover these, briefly, and link to `recipes/README.md` and `docs/` for anything
 shared rather than restating it:
 
 1. What it does, and the method

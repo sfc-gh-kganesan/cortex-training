@@ -52,7 +52,7 @@ between its sub-jobs.
 
 The CLI and `CortexTrainingClient` operate on the same jobs; they are not
 alternative execution models. Use the CLI for setup, inspection, and individual
-operations. Use a Python loop or an [example](../../examples/README.md) for dataset
+operations. Use a Python loop or an [example](../../recipes/README.md) for dataset
 iteration, batching, rewards, evaluation, and repeated calls. The client loop
 creates a job or uses an existing job ID, submits operations, and polls their
 results. `submit --wait` waits for workers to be running; it does not upload or
@@ -91,8 +91,8 @@ cortex-training --config config.json list     # Use config for one command
 ### [Submit Jobs](#submit-a-job)
 
 ```bash
-cortex-training submit examples/api/training.json
-cortex-training submit examples/api/sampling.json
+cortex-training submit recipes/api_quickstart/training.json
+cortex-training submit recipes/api_quickstart/sampling.json
 cortex-training submit job.json --dry-run     # Validate without submitting
 cortex-training submit job.json --wait        # Wait until running, not finished
 cortex-training submit - < job.json           # Read JSON from stdin
@@ -117,10 +117,10 @@ cortex-training capacity --hardware H200
 ### [Training And Generation](#run-a-forward-backward-smoke-test)
 
 ```bash
-cortex-training --job JOB_ID fwd-bwd examples/api/fwd-bwd.json
+cortex-training --job JOB_ID fwd-bwd recipes/api_quickstart/fwd-bwd.json
 cortex-training --job JOB_ID step             # Default learning rate: 1e-4
 cortex-training --job JOB_ID step --lr 2e-5
-cortex-training --job JOB_ID generate examples/api/generate.json
+cortex-training --job JOB_ID generate recipes/api_quickstart/generate.json
 cortex-training --job JOB_ID weight-sync
 cortex-training --job JOB_ID weight-sync --weight-format lora
 ```
@@ -154,7 +154,7 @@ for download paths and output fields.
 ### [Model Deployments](#model-deployments)
 
 ```bash
-cortex-training model-deployment create --spec examples/api/model-deployment-checkpoint.json --wait
+cortex-training model-deployment create --spec recipes/api_quickstart/model-deployment-checkpoint.json --wait
 cortex-training model-deployment create --spec deployment.json --dry-run   # Validate only
 cortex-training model-deployment list --status READY
 cortex-training model-deployment describe sf-ct-DEPLOYMENT_UUID
@@ -466,8 +466,8 @@ before send, including on `--dry-run`, with
 The repo includes a Prime-RL/Qwen3.6 training example:
 
 ```bash
-cortex-training submit examples/api/training.json
-cortex-training submit examples/api/sampling.json
+cortex-training submit recipes/api_quickstart/training.json
+cortex-training submit recipes/api_quickstart/sampling.json
 ```
 
 That file creates a training sub-job for `Qwen/Qwen3.6-35B-A3B` with
@@ -479,7 +479,7 @@ That file creates a training sub-job for `Qwen/Qwen3.6-35B-A3B` with
 After the training job is running, send one tokenized training batch:
 
 ```bash
-cortex-training --job JOB_ID fwd-bwd examples/api/fwd-bwd.json
+cortex-training --job JOB_ID fwd-bwd recipes/api_quickstart/fwd-bwd.json
 cortex-training --job-id JOB_ID step
 ```
 
@@ -585,7 +585,7 @@ After a sampling job is running, send readable prompts with sampling
 parameters:
 
 ```bash
-cortex-training --job-id JOB_ID generate examples/api/generate.json
+cortex-training --job-id JOB_ID generate recipes/api_quickstart/generate.json
 ```
 
 The generate JSON contains `prompts`, optional `sampling_params`, and optional
@@ -772,7 +772,7 @@ Create a deployment from a base model or a completed Cortex Training
 cortex-training model-deployment create \
   --database CORTEX_TRAINING_DB \
   --schema PUBLIC \
-  --spec examples/api/model-deployment-checkpoint.json \
+  --spec recipes/api_quickstart/model-deployment-checkpoint.json \
   --wait
 ```
 

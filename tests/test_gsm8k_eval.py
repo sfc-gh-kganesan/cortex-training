@@ -1,4 +1,4 @@
-from examples.inference.evaluate import normalize_gsm8k_answer
+from recipes.inference.evaluate import normalize_gsm8k_answer
 
 
 def test_normalize_gsm8k_answer_from_hash_line():

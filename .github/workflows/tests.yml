@@ -34,7 +34,7 @@ jobs:
 
       - name: Install package and test dependencies
         # The example tests import tinker-cookbook and wandb; install them the
-        # way examples/README.md does. CPU-only torch keeps the job small.
+        # way recipes/README.md does. CPU-only torch keeps the job small.
         # `python -m uv pip` installs into the setup-python interpreter, which
         # is the one the next step runs.
         run: |

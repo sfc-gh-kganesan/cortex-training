@@ -7,10 +7,10 @@ import pytest
 
 from cortex_training.connection import ResolvedConnection
 from cortex_training.model_deployment import ModelDeploymentSpec
-from examples.model_deployment import streaming
+from recipes.model_deployment import streaming
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE_DIR = REPO_ROOT / "examples/model_deployment"
+EXAMPLE_DIR = REPO_ROOT / "recipes/model_deployment"
 DEPLOYMENT_ID = "sf-ct-00000000-0000-4000-8000-000000000000"
 BASE_URL = "https://ACCOUNT.snowflakecomputing.com/api/v2/databases/DB/schemas/PUBLIC/cortex-training/inference/v1"
 
@@ -241,7 +241,7 @@ class FakeClient:
 @pytest.fixture
 def deploy(monkeypatch, tmp_path):
     pytest.importorskip("chz")
-    from examples.model_deployment import deploy as module
+    from recipes.model_deployment import deploy as module
 
     connection = tmp_path / "config.json"
     connection.write_text(json.dumps({"host": "ACCOUNT.snowflakecomputing.com", "pat": "PAT"}))

@@ -6,7 +6,7 @@ Place content according to its purpose:
 - `concepts/` for mental models and architecture
 - `guides/` for task-oriented procedures
 - `reference/` for exact commands, schemas, and supported values
-- `examples/` for runnable workflows and their local documentation
+- `recipes/` for runnable workflows and their local documentation
 
 Document only what exists in the branch. Do not add placeholder pages for
 unimplemented features -- if a workflow is partly implemented, say so inline on

@@ -8,7 +8,7 @@ from cortex_training.cli import commands as _cli
 from cortex_training.client import core as client_module
 from cortex_training.client import CortexTrainingClient
 from cortex_training.connection import resolve_connection
-from examples import utils
+from recipes import utils
 
 HOST = "ACCOUNT.snowflakecomputing.com"
 PROFILE_BASE_URL = f"https://{HOST}"
@@ -288,24 +288,24 @@ def test_example_command_hints_render_the_connection_argument():
 
 # Modules that call chz.nested_entrypoint (Protocol-only modules are excluded).
 EXAMPLE_ENTRYPOINTS = [
-    "examples.distillation.on_policy.train",
-    "examples.inference.evaluate",
-    "examples.inference.generate",
-    "examples.inference.serve",
-    "examples.model_deployment.deploy",
-    "examples.rl.math_grpo.train",
-    "examples.sft.conversational.train",
-    "examples.sft.dare.evaluate",
-    "examples.sft.dare.train",
+    "recipes.distillation.on_policy.train",
+    "recipes.inference.evaluate",
+    "recipes.inference.generate",
+    "recipes.inference.serve",
+    "recipes.model_deployment.deploy",
+    "recipes.rl_quickstart.math_grpo.train",
+    "recipes.sft_quickstart.conversational.train",
+    "recipes.sft_quickstart.dare.evaluate",
+    "recipes.sft_quickstart.dare.train",
 ]
 
 
 def test_no_example_requires_a_config_file():
-    """A required `config: str` anywhere under examples/ would force a JSON file again."""
+    """A required `config: str` anywhere under recipes/ would force a JSON file again."""
     import pathlib
     import re
 
-    root = pathlib.Path(__file__).resolve().parents[1] / "examples"
+    root = pathlib.Path(__file__).resolve().parents[1] / "recipes"
     required = re.compile(r"^    config: str\s*$", re.M)
     offenders = [
         str(path.relative_to(root.parent))
@@ -321,7 +321,7 @@ def test_example_config_is_optional_and_takes_a_connection(module_name):
     import inspect
 
     pytest.importorskip("chz")
-    if module_name == "examples.sft.dare.evaluate":
+    if module_name == "recipes.sft_quickstart.dare.evaluate":
         pytest.importorskip("sklearn")
     module = importlib.import_module(module_name)
     parameters = inspect.signature(module.Config).parameters

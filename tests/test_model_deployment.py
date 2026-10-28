@@ -1811,7 +1811,7 @@ def test_downloaded_files_are_private_to_the_owner(tmp_path):
 
 
 def test_checkpoint_example_is_a_valid_spec():
-    path = Path(__file__).resolve().parents[1] / "examples/api/model-deployment-checkpoint.json"
+    path = Path(__file__).resolve().parents[1] / "recipes/api_quickstart/model-deployment-checkpoint.json"
 
     spec = ModelDeploymentSpec.from_dict(json.loads(path.read_text()))
 
