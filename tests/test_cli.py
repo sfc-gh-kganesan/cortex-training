@@ -617,7 +617,7 @@ def test_submit_dry_run_prints_the_normalized_peft_config(tmp_path):
 
 def test_submit_dry_run_prints_arctic_provider_as_prime_rl():
     stdout = io.StringIO()
-    path = Path(__file__).resolve().parents[1] / "examples" / "api" / "training.json"
+    path = Path(__file__).resolve().parents[1] / "recipes" / "api_quickstart" / "training.json"
 
     rc = cli.main(["submit", str(path), "--dry-run"], stdout=stdout)
 
