@@ -1,26 +1,34 @@
-# Train an OpenHands or Harbor agent
+# Train an OpenHands agent
 
 This is the worked recipe for [Bring your own agent](../bring-your-own-agent.md).
 [OpenHands](https://github.com/OpenHands/software-agent-sdk) runs unchanged.
 Its LLM settings point at the rollout's model endpoint, and training improves
 the model behind it.
 
-You can run this workflow in two ways:
-1. **On any [Harbor](https://github.com/harbor-framework/harbor) task directories (`recipes/rl/harbor`):** Point `TRAIN_HARBOR_TASKS` and `EVAL_HARBOR_TASKS` at any Harbor tasks (`instruction.md`, `environment/`, `tests/test.sh`), optionally attach a `SKILL.md` (`HARBOR_SKILL`), and run rollouts inside `--env snowflake` ([Snowflake Cortex Sandboxes](https://harborframework.com/docs/sandboxes/pre-integrated-sandboxes)), `docker`, `modal`, `daytona`, or `HostEnvironment`.
-2. **Direct OpenHands SDK code localization (`recipes/rl/openhands/code_localization`):** Given a bug report, name the file, class, and function to change. The agent searches the repository with the `terminal` tool and submits with `localization_finish`. The reward is file F1 + module F1 + function F1 (maximum `3.0`).
+The task is SWE-smith code localization
+([`recipes/rl/openhands/code_localization`](https://github.com/Snowflake-AI-Research/Arctic-Platform/tree/main/recipes/rl/openhands/code_localization)
+in Arctic Platform): given a bug report, name the file, class, and function to
+change. The agent searches the repository with the `terminal` tool and submits
+with `localization_finish`. The reward is file F1 + module F1 + function F1
+(maximum `3.0`).
 
-In both modes, `Qwen/Qwen3.5-4B` is trained with online RL (GSPO loss; see [Run](#run)). SkyRL drives the loop from a CPU machine, and Cortex Training runs 4 training and 4 sampling H200 GPUs.
+`Qwen/Qwen3.5-4B` is trained with online RL (GSPO loss; see [Run](#run)). SkyRL
+drives the loop from a CPU machine, and Cortex Training runs 4 training and 4
+sampling H200 GPUs.
 
-> **Tip — Drive training from OpenHands with `/cortex-training-rl`:** The [`cortex-training-rl`](https://github.com/OpenHands/extensions/tree/main/skills/cortex-training-rl) skill is built into OpenHands' public skill registry (`OpenHands/extensions`). In the OpenHands CLI or GUI, simply ask OpenHands to post-train your model on your Harbor tasks (or invoke `/cortex-training-rl`) and the agent will run preflight checks, launch `run_qwen35_4b.sh`, monitor rewards, and generate `reward_graph.svg` automatically.
+To train OpenHands, or your own agent, on Harbor tasks you already evaluate
+with `harbor run`, see [Train an agent on the Harbor tasks you evaluate it on](../harbor/README.md).
+
+> **Tip — Drive training from OpenHands with `/cortex-training-rl`:** The [`cortex-training-rl`](https://github.com/OpenHands/extensions/tree/main/skills/cortex-training-rl) skill is built into OpenHands' public skill registry (`OpenHands/extensions`). In the OpenHands CLI or GUI, ask OpenHands to post-train your model (or invoke `/cortex-training-rl`) and the agent runs preflight checks, launches the run script, monitors rewards, and plots them.
 
 ## How OpenHands plugs in
 
-| Piece | Direct OpenHands (`recipes/rl/openhands/code_localization`) | With Harbor (`recipes/rl/harbor`) |
-| --- | --- | --- |
-| `submit` | Clones the task repository into a fresh directory and starts an OpenHands conversation in a thread pointed at the rollout's `base_url` and `api_key` | Runs Harbor's `Trial.create(trial_cfg)` $\to$ `trial.run()` with your chosen `--agent` (`HARBOR_AGENT`) and `--env` (`HARBOR_ENV`) pointed at `base_url` and `api_key` |
-| `get_status` | `running` while the thread runs, then `completed` or `errored` | `running` while the Harbor trial runs, then `completed` or `errored` |
-| `collect_output` | The conversation and the locations passed to `localization_finish` | The Harbor `TrialResult`, verifier rewards, and trajectory |
-| Grader | File + module + function F1 (`rollout.py`) | Harbor's `Verifier` (`tests/test.sh` writing `/logs/verifier/reward.txt` or `reward.json`) |
+| Piece | What it does |
+| --- | --- |
+| `submit` | Clones the task repository into a fresh directory and starts an OpenHands conversation in a thread pointed at the rollout's `base_url` and `api_key` |
+| `get_status` | `running` while the thread runs, then `completed` or `errored` |
+| `collect_output` | The conversation and the locations passed to `localization_finish` |
+| Grader | File + module + function F1 (`rollout.py`) |
 
 ## Prerequisites
 
@@ -46,7 +54,7 @@ git clone https://github.com/Snowflake-AI-Research/Arctic-Platform
 cd Arctic-Platform
 ```
 
-The run script installs OpenHands (and Harbor) itself.
+The run script installs OpenHands itself.
 
 ## Configure
 
@@ -61,29 +69,7 @@ export ARCTIC_CORTEX_SCHEMA=$(jq -r .schema "$cfg")
 export ARCTIC_CORTEX_PAT=$(jq -r .pat "$cfg")
 ```
 
-## Option 1: Run on any Harbor tasks (`recipes/rl/harbor`)
-
-Point `TRAIN_HARBOR_TASKS` and `EVAL_HARBOR_TASKS` at any Harbor task directories (or export SWE-smith tasks into Harbor format):
-
-```bash
-# Export SWE-smith code localization into Harbor task directories (or point at your own Harbor tasks)
-uv run recipes/rl/harbor/prepare_data.py \
-  --export-swe-smith-to ~/data/swe-smith-harbor-tasks \
-  --out ~/data/harbor-rl
-
-export TRAIN_HARBOR_TASKS=~/data/swe-smith-harbor-tasks/train
-export EVAL_HARBOR_TASKS=~/data/swe-smith-harbor-tasks/eval
-export HARBOR_SKILL=/path/to/SKILL.md   # optional: ":"-separated SKILL.md paths
-export LOGGER=console
-export ARCTIC_CORTEX_JOB_COMMENT="your name, harbor rl"
-
-bash recipes/rl/harbor/run_qwen35_4b.sh \
-  trainer.max_training_steps=50
-```
-
-To run rollouts inside Snowflake Cortex Sandboxes (`--env snowflake`), set `export HARBOR_ENV=snowflake`.
-
-## Option 2: Run direct OpenHands code localization (`recipes/rl/openhands/code_localization`)
+## Prepare the data
 
 Download [`OpenHands/SWE-smith-py-code-search`](https://huggingface.co/datasets/OpenHands/SWE-smith-py-code-search) and write the training files:
 
@@ -95,7 +81,7 @@ That writes 39,187 training and 100 validation rows to
 `~/data/swe-smith-localization`, where the run script reads them. To keep them
 elsewhere, pass `--out DIR` and set `DATA_DIR=DIR` when you run.
 
-### Run
+## Run
 
 From the `Arctic-Platform` checkout. `LOGGER=console` skips Weights & Biases.
 `ARCTIC_CORTEX_JOB_COMMENT` is the note that identifies your job.
@@ -130,6 +116,4 @@ job after 30 idle minutes; set `ARCTIC_CORTEX_IDLE_TIMEOUT_SECONDS` (at least
 
 The
 [OpenHands recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/openhands/code_localization/README.md)
-and
-[Harbor recipe README](https://github.com/Snowflake-AI-Research/Arctic-Platform/blob/main/recipes/rl/harbor/README.md)
-have every setting and source commit.
+has every setting and source commit.

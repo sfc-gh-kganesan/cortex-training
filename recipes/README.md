@@ -15,7 +15,8 @@ type on the command line instead of writing a job file.
 | [DFlash2 draft](dflash2/README.md) | Speculative-decoding draft training, then serving with the target | Target-written chats (UltraChat prompts) |
 | [SkyRL GRPO](skyrl/gsm8k_grpo/README.md) | SkyRL trainer on CPU driver + Cortex training/sampling sub-jobs | GSM8K |
 | [Tinker Cookbook](tinker/README.md) | Run `tinker-cookbook` recipes or `ServiceClient` on Cortex | GSM8K, MATH, etc. |
-| [OpenHands & Harbor RL](openhands/README.md) | Train an OpenHands or Harbor agent with online GSPO/GRPO | SWE-smith code localization, Harbor tasks (`Terminal-Bench 2.0`, etc.) |
+| [Harbor RL](harbor/README.md) | Go from `harbor run` evals to RL on the same tasks, sandbox and verifier | Any Harbor tasks (`Terminal-Bench 2.0`, SWE-smith, etc.) |
+| [OpenHands RL](openhands/README.md) | Train an OpenHands agent with online GSPO | SWE-smith code localization |
 | [Bring your own agent](bring-your-own-agent.md) | Connect any custom agent harness and grader to Cortex RL | Custom agent tasks |
 
 ```text
@@ -31,7 +32,8 @@ recipes/
 ├── api_quickstart/          # raw REST API request bodies
 ├── skyrl/                   # SkyRL GRPO recipe
 ├── tinker/                  # tinker-cookbook integration
-├── openhands/               # OpenHands & Harbor agent RL post-training
+├── harbor/                  # RL post-training on Harbor tasks, from harbor run evals
+├── openhands/               # OpenHands agent RL post-training
 └── bring-your-own-agent.md  # custom agent harness RL guide
 ```
 

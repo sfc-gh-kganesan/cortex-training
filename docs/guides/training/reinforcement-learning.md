@@ -20,4 +20,5 @@ To train a model inside an agent you already have, see
 [Bring your own agent](../../../recipes/bring-your-own-agent.md). The agent
 keeps its own loop and sends model calls to a per-rollout endpoint; SkyRL and
 Cortex do the training. [OpenHands](../../../recipes/openhands/README.md) is the
-worked example.
+worked example. If you already evaluate your agent on Harbor tasks, train it on
+those tasks with the [Harbor recipe](../../../recipes/harbor/README.md).

@@ -6,7 +6,9 @@ agent sends its model calls. Each rollout gets its own OpenAI-compatible URL
 and API key, served by the policy that is being trained. The model learns in
 the same agent it will be deployed in.
 
-[OpenHands](openhands/README.md) is the worked example. The code is in the
+[OpenHands](openhands/README.md) is the worked example. If your tasks are in
+Harbor format, the [Harbor recipe](harbor/README.md) trains on them as they
+are. The code is in the
 [Arctic Platform](https://github.com/Snowflake-AI-Research/Arctic-Platform)
 repository: the endpoint and generator in `arctic_platform.integrations.harness`,
 the Harbor integration in `arctic_platform.integrations.harbor`, and the recipes in
