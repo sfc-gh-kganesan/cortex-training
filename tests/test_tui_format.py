@@ -628,3 +628,58 @@ def test_the_clipboard_file_takes_precedence_so_a_test_never_touches_the_real_on
     # An unwritable path is a failure, not a crash.
     monkeypatch.setenv("CORTEX_TRAINING_TUI_CLIPBOARD_FILE", str(tmp_path / "no-such-dir" / "clip.txt"))
     assert clipboard.copy_local("x") is False
+
+
+def test_a_drain_line_says_its_numbers():
+    entry = {"ts": "2026-06-12T00:00:01Z", "level": "INFO", "logger": "app.server", "msg": "drain_metrics",
+             "completed_requests": 16, "latency_s_p50": 0.05, "ttft_s_p99": 0.215, "replica_count": 2,
+             "replica_errors": 1}
+    assert format_log_entry(entry).endswith(
+        "drain_metrics  16 req · p50 50ms · ttft p99 215ms · 2 replicas · 1 replica error")
+
+
+def test_a_quiet_drain_and_other_lines_stay_as_they_are():
+    quiet = {"msg": "drain_metrics", "completed_requests": 0, "latency_s_p50": None, "replica_count": 1,
+             "replica_errors": 0}
+    assert format_log_entry(quiet).endswith("drain_metrics  0 req · 1 replica")
+    assert format_log_entry({**quiet, "replica_errors": -1}).endswith("drain_metrics  0 req · 1 replica")
+    assert format_log_entry({"msg": "drain_metrics"}).endswith("drain_metrics")  # an older shape: no numbers
+    assert format_log_entry({"msg": "hello", "completed_requests": 3}).endswith("hello")
+    assert format_log_entry({"msg": "drain_metrics", "completed_requests": True}).endswith("drain_metrics")
+
+
+def test_a_live_drain_line_says_its_numbers_on_the_logs_pane():
+    # The pane draws a tail or console line through display_line, not format_log_entry.
+    raw = ('2026-06-12T00:00:01.123456789Z {"ts": "2026-06-12T00:00:01Z", "level": "INFO", '
+           '"logger": "app.server", "msg": "drain_metrics", "completed_requests": 10, '
+           '"latency_s_p50": 0.042, "ttft_s_p99": 0.034, "replica_count": 1, "replica_errors": 0}')
+    assert display_line(raw).endswith("drain_metrics  10 req · p50 42ms · ttft p99 34ms · 1 replica")
+    plain = '2026-06-12T00:00:01Z {"level": "INFO", "msg": "drain_metrics"}'
+    assert display_line(plain).endswith("drain_metrics")
+
+
+def test_a_drain_line_with_non_finite_numbers_does_not_crash():
+    # json.loads accepts NaN and Infinity, which int() refuses.
+    entry = json.loads('{"msg": "drain_metrics", "completed_requests": NaN, "replica_count": Infinity}')
+    assert format_log_entry(entry).endswith("drain_metrics")
+    entry = json.loads('{"msg": "drain_metrics", "completed_requests": 3, "latency_s_p50": NaN, '
+                       '"replica_count": Infinity, "replica_errors": -Infinity}')
+    assert format_log_entry(entry).endswith("drain_metrics  3 req")
+    entry = json.loads('{"msg": "drain_metrics", "completed_requests": 2, "replica_count": 1' + "0" * 400 + '}')
+    assert format_log_entry(entry).endswith("drain_metrics  2 req")
+
+
+def test_short_seconds_picks_its_unit_after_rounding():
+    from cortex_training.tui.format import short_seconds
+
+    assert short_seconds(0.42) == "420ms"
+    assert short_seconds(0.9996) == "1.00s"  # not "1000ms"
+    assert short_seconds(1.919) == "1.92s"
+    assert short_seconds(1e306) == f"{1e306:.2f}s"  # no OverflowError on a huge finite value
+
+
+def test_an_empty_search_names_what_the_view_lists():
+    query = parse_query("x")
+    assert no_match_message("x", query, 3).startswith("No jobs match “x” among 3 job(s)")
+    said = no_match_message("x", query, 3, noun="deployment")
+    assert said.startswith("No deployments match “x” among 3 deployment(s)"), said

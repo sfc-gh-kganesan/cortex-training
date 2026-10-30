@@ -92,6 +92,10 @@ from cortex_training.tui.widgets import _fit_line
 from cortex_training.tui.widgets import after_refresh
 from cortex_training.tui.widgets import spans_content
 
+# Inference engines reserve most of a GPU's memory when they start, so a deployment's
+# memory reads near full all its life; KV cache use, on Serving, is the signal.
+_DEPLOYMENT_MEMORY_NOTE = "GPU memory is reserved up front for serving; v Serving shows KV cache use"
+
 
 class ResourceTab:
     """The Resources tab of :class:`~cortex_training.tui.logs.LogScreen`."""
@@ -212,12 +216,13 @@ class ResourceTab:
         polled = self._resource_polled_at(sub_job_id)
         return polled is None or not self._live() or time.monotonic() - polled >= self._DATA_REFRESH_SECONDS
 
-    def _after_telemetry_download(self, before: int) -> None:
-        """Worker thread. A download that grew the job's telemetry from ``before`` bytes by
-        much asks the app to hold the cache to its limit soon (see hold_cache_soon). Never
-        fails the download: the cache is the TUI's own business."""
+    def _after_telemetry_download(self, before: int, root: Path | None = None) -> None:
+        """Worker thread. A download that grew the job's telemetry (under ``root``, the metrics
+        folder by default) from ``before`` bytes by much asks the app to hold the cache to its
+        limit soon (see hold_cache_soon). Never fails the download: the cache is the TUI's own
+        business."""
         try:
-            grown = telemetry_bytes(self._metrics_root) - before
+            grown = telemetry_bytes(root or self._metrics_root) - before
             if grown > 0:
                 self._post(self._ask_for_cache_pass, grown)
         except Exception:  # noqa: BLE001
@@ -951,7 +956,6 @@ class ResourceTab:
             window=window_label(self._resource_range),
             key=self._resource_range,  # "10m", "all": the window keys' own names
             scraped=scrape_text(resource),
-            scraped_short=scrape_text(resource, notes=False),
             fresh=freshness_text(resource, now, stale=stale, what=samples),
             fresh_short=freshness_text(resource, now, stale=stale, clock=False, what=samples),
         )
@@ -966,16 +970,20 @@ class ResourceTab:
         if not states:
             # Nothing shows, but the room a refresh's state needs stays free.
             state = [("", len(_SEPARATOR) + len(text)) for text in self._RESOURCE_REFRESHING]
-        scraped = [("$scraped", 0), ("$scraped_short", 0), ("", 0)]
+        scraped = [("$scraped", 0), ("", 0)]
         # A download that gave up on chunks: the telemetry on screen has holes, so say so
         # here rather than let it look complete. It goes last and is never dropped.
         warnings = self._source_warnings()
         if warnings:
             values["warning"] = _warning_text(warnings)
         alert = [("$warning", 0)] if warnings else [("", 0)]
-        # Parts: 0 scraped, 1 freshness, 2 state, 3 skipped rows, 4 warning.
-        second = _fit_line([scraped, fresh, state, note, alert], [3, 0, 1, 2, 3, 0], width, values, cut="problem")
-        return Content("\n").join([first, second])
+        # Parts: 0 scraped, 1 freshness, 2 state, 3 skipped rows, 4 warning. The scrape interval has
+        # no shorter form, so it goes last, once the others have shrunk (the clock first).
+        second = _fit_line([scraped, fresh, state, note, alert], [3, 1, 2, 3, 0], width, values, cut="problem")
+        lines = [first, second]
+        if kind == GPU and views.is_deployment(self._job):
+            lines.append(Content(views.fit_cells(_DEPLOYMENT_MEMORY_NOTE, width) if width else _DEPLOYMENT_MEMORY_NOTE))
+        return Content("\n").join(lines)
 
     def _tick_resource_status(self) -> None:
         # Keeps "newest N s ago" current between refreshes, without redrawing the rest

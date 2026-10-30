@@ -197,7 +197,13 @@ def test_complete_chat_reads_message_content():
 
 @pytest.mark.parametrize(
     ("status", "message"),
-    [(404, "inference may not be enabled"), (400, "HTTP 400: bad request")],
+    [
+        (403, "may not be served here"),
+        (404, "unknown, not visible to you, failed, or was dropped"),
+        (405, "inference routes may not be enabled"),
+        (503, "not READY yet, or is temporarily unavailable"),
+        (400, "HTTP 400: bad request"),
+    ],
 )
 def test_http_errors_raise_with_status(status, message):
     session = FakeSession(FakeResponse(status_code=status, text="bad request"))

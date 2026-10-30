@@ -84,8 +84,6 @@ _NEWEST_FIRST_SLACK_S = 120.0
 # Reporting tolerates independent worker uploads.
 _REPORTING_TOLERANCE_S = 120.0
 _INTERVAL_DELTAS = 64
-# Each GPU's newest samples looked at for how often its values change (about 21 minutes at 5 s).
-_VALUE_RUN_SAMPLES = 256
 # Min and max come from the average across units at each sampling interval; a
 # finer interval than this many buckets over the raw retention is coarsened.
 _MAX_NATIVE_BUCKETS = 20_000
@@ -181,7 +179,6 @@ class KindResource:
     first_sample_ts: datetime | None = None
     sample_interval_s: float | None = None
     reported_interval_s: float | None = None
-    value_interval_s: float | None = None
     partial: bool = False
     reporting_unit_ids: tuple[int, ...] = ()
     latest: Mapping[str, float | None] = field(default_factory=dict)
@@ -414,16 +411,15 @@ class _Kind:
     other: str  # the free bytes (GPU: used / (used + free)) or the total (system: used / total)
     other_is_free: bool
     bridge: bool  # carry a unit across one missed scrape (see _BRIDGE_INTERVALS)
-    value_note: bool  # derive how often the headline values change
     # Fields that stay the same through a job: the header names them (node_allocation_text),
     # and they get no chart or stats row. They are read even without a unit (cpu_count).
     constant: tuple[str, ...] = ()
 
 
 _GPU_KIND = _Kind(GPU, 2, "global_gpu_index", "GPU", 0, "gpu_util_pct", "fb_used_pct",
-                  "fb_used_bytes", "fb_free_bytes", True, False, True)
+                  "fb_used_bytes", "fb_free_bytes", True, False)
 _SYSTEM_KIND = _Kind(SYSTEM, 3, "worker_num", "node", 1, "cpu_util_pct", "mem_used_pct",
-                     "mem_used_bytes", "mem_total_bytes", False, True, False, ("cpu_count", "mem_total_bytes"))
+                     "mem_used_bytes", "mem_total_bytes", False, True, ("cpu_count", "mem_total_bytes"))
 _KIND_SPECS = {GPU: _GPU_KIND, SYSTEM: _SYSTEM_KIND}
 
 
@@ -1336,35 +1332,6 @@ def _merge(pair: tuple[float | None, float | None], values) -> tuple[float | Non
     return (min(points), max(points)) if points else (None, None)
 
 
-def _value_interval(series: _Series) -> float | None:
-    """How often the GPUs' busy values change, from their recent samples (None if unknown).
-
-    DCGM refreshes a field on its own schedule, often far less often than the
-    sampler scrapes, so consecutive rows repeat a value. A value can also stay
-    the same across a refresh, so each GPU's time between changes is a multiple
-    of the refresh: its lower quartile estimates it, and the median over GPUs
-    leaves out an idle GPU's long runs. Runs cut short by the samples' ends
-    don't count.
-    """
-    slot = series.slot_of.get(series.spec.headline)
-    if slot is None:
-        return None
-    per_unit: list[float] = []
-    for unit in series.units.values():
-        unit.sort()
-        column = unit.cols[slot]
-        if column is None:
-            continue
-        ts = unit.ts[-(_VALUE_RUN_SAMPLES + 1):]
-        util = column[-(_VALUE_RUN_SAMPLES + 1):]
-        changes = [ts[i] for i in range(1, len(ts))
-                   if util[i] == util[i] and util[i - 1] == util[i - 1] and util[i] != util[i - 1]]
-        runs = sorted(b - a for a, b in zip(changes, changes[1:]))
-        if len(runs) >= 2:
-            per_unit.append(runs[len(runs) // 4])
-    return median(per_unit) if per_unit else None
-
-
 def _derived_interval(series: _Series) -> float | None:
     """The median spacing of each unit's recent consecutive samples."""
     deltas: list[float] = []
@@ -1630,7 +1597,6 @@ def _snapshot(series: _Series, partial: bool, shown_window: str | None = None,
         first_sample_ts=_utc(series.first),
         sample_interval_s=interval,
         reported_interval_s=reported,
-        value_interval_s=_value_interval(series) if spec.value_note else None,
         partial=partial,
         reporting_unit_ids=capture.reporting,
         latest={key: _scaled(capture.mean[slot], factor) for key, slot, factor in zip(keys, slots, factors)},
@@ -2352,9 +2318,6 @@ def kpi_tiles(resource: KindResource, view: KindView, *, unit: int | None = None
 
 _TILE_GAP = 1  # cells between two tiles
 _TILE_EDGE = "▎"
-# The edge beside a tile's value when the value isn't healthy: a shape as well as a color,
-# so a warning and an error still show where there is no color (NO_COLOR, a copied strip).
-_TILE_MARKS = {"warn": "!", "err": "×"}
 
 
 def _tile_width(tile: Kpi, detail: bool) -> int:
@@ -2409,8 +2372,7 @@ def kpi_strip_spans(tiles: list[Kpi], width: int, *, styled: bool = True,
             value = views.fit_cells(tile.value, inner)
             rest = inner - views.cell_width(value)
             note = views.fit_cells(tile.detail, rest - 2) if keep[index] and rest > 3 else ""
-            mark = (f"{_TILE_MARKS.get(tile.health, _TILE_EDGE)} ", edge[1])
-            bottom += [mark, (value, f"bold {color} {card}" if styled else "")]
+            bottom += [edge, (value, f"bold {color} {card}" if styled else "")]
             tail = (f"  {note}" if note else "").ljust(rest) + " "
             bottom.append((tail, f"{FAINT if dim else MUTED} {card}" if styled else ""))
         lines += [top, bottom]
@@ -2620,28 +2582,10 @@ def format_age(seconds: float) -> str:
     return f"{seconds} s" if seconds < 60 else views.fmt_duration(seconds)
 
 
-def scrape_text(sub_job: KindResource, *, notes: bool = True) -> str:
-    """``scraped every 5 s (values change about every 1m)``; ``notes=False``: ``scraped every 5 s``.
-
-    "Scraped": the sampler reads DCGM at this interval, but DCGM may refresh a
-    field less often, so consecutive samples can repeat a value. When the busy
-    values change less often than every two scrapes, the text says how often:
-    the newest value can be that much older than the newest row.
-    """
-    derived, reported = sub_job.sample_interval_s, sub_job.reported_interval_s
-    scraped = derived or reported
-    text = f"scraped every {format_interval(scraped)}"
-    if not notes:
-        return text
-    found = []
-    if derived and reported and abs(derived - reported) > 0.25 * reported:
-        found.append(f"rows report {format_interval(reported)}")
-    changes = sub_job.value_interval_s
-    if changes and scraped and changes > 2 * scraped:
-        found.append(f"values change about every {format_interval(changes)}")
-    if found:
-        text += f" ({'; '.join(found)})"
-    return text
+def scrape_text(sub_job: KindResource) -> str:
+    """``scraped every 5 s``: how often the sampler reads the sub-job's GPUs or nodes (the rows'
+    spacing, else the interval they report)."""
+    return f"scraped every {format_interval(sub_job.sample_interval_s or sub_job.reported_interval_s)}"
 
 
 def freshness_text(sub_job: KindResource, now: datetime, *, stale: bool = False,

@@ -1,17 +1,18 @@
 # Copyright 2025 Snowflake Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The job screen's Training metrics tab.
+"""The job screen's Training metrics tab, and the base it shares with the Serving tab
+(:class:`~cortex_training.tui.serving_view.ServingPane`).
 
-The tab is one widget that reads and draws its own data, so the job screen
+Each tab is one widget that reads and draws its own data, so the job screen
 only places it, tells it when it is shown (:meth:`activate`) and when a live
 job's periodic refresh is due (:meth:`refresh_live`). It reads the job as the
-screen knows it through the ``job`` callable it is given, and fetches its rows
-through the screen's ``download``, which writes into the same cache directory
-as the Resources tab, under the same lock.
+screen knows it through the ``job`` callable it is given, and fetches its data
+through the screen's ``download``: Training metrics into the same cache directory
+as the Resources tab, under the same lock; Serving into its own copy of the console.
 
-The pane's keys (``w``, ``a``, ``Space``, ``r``) are its own bindings, which win
-over the screen's while the focus is inside the pane.
+A pane's keys (Training metrics' ``w``, ``a``, ``Space``, ``r``; Serving's ``r``) are
+its own bindings, which win over the screen's while the focus is inside the pane.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path
 import threading
 from typing import Callable
 
+from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
@@ -46,7 +48,8 @@ _WARNING = WARN_TEXT  # a warning's text, as on the Logs tab
 
 
 class _Pane(Vertical):
-    """What both tabs share: posting a worker's answer to the UI thread while the pane is up."""
+    """What the Training metrics and Serving panes share: being shown (and so loaded), and
+    posting a worker's answer to the UI thread while the pane is up."""
 
     def __init__(self, client, job_id: str, *, job: Callable[[], dict], id: str) -> None:
         super().__init__(id=id)
@@ -56,6 +59,11 @@ class _Pane(Vertical):
         self._shown = False  # activated at least once: the first show loads
         self._loading = False
         self._error: str | None = None
+
+    @property
+    def opened(self) -> bool:
+        """Whether the tab was opened at least once (and so has loaded), not whether it is on screen now."""
+        return self._shown
 
     def _post(self, fn, *args) -> None:
         """Worker thread: run ``fn(*args)`` on the UI thread, dropped once the pane is gone."""
@@ -152,6 +160,20 @@ def training_loader(metrics_root: Path, local_root: Path | None = None) -> train
 # Two charts to a row in a pane at least this wide, as on the Resources tab.
 _TWO_CHARTS_WIDTH = 90
 _CHART_HEIGHT = 6
+# The header's window and metrics words: a click on one does what its key does (see _TrainingStatus).
+_CLICK_WINDOW = Style.from_meta({"@click": "cycle_window"})
+_CLICK_EVERYTHING = Style.from_meta({"@click": "toggle_everything"})
+
+
+class _TrainingStatus(Static):
+    """The Training metrics header. A click on its window or on what metrics it shows runs here
+    (Textual sends a click's action to the widget clicked), and goes on to the pane, as w and a do."""
+
+    def action_cycle_window(self) -> None:
+        self.query_ancestor(TrainingPane).action_cycle_window()
+
+    def action_toggle_everything(self) -> None:
+        self.query_ancestor(TrainingPane).action_toggle_everything()
 
 
 class TrainingPane(_Pane):
@@ -205,7 +227,7 @@ class TrainingPane(_Pane):
             self._post(self._accept, data)
 
     def compose(self) -> ComposeResult:
-        yield Static("", id="training-status")
+        yield _TrainingStatus("", id="training-status")
         with VerticalScroll(id="training-pane"):
             # Per step, then per /fwd-bwd call, one after the other.
             for view in training.VIEWS:
@@ -384,12 +406,13 @@ class TrainingPane(_Pane):
             if sub_job.newest is not None:
                 text.append(f"  ·  newest row {views.fmt_ago(sub_job.newest, datetime.now(timezone.utc))}")
         if source is not None:
-            text.append(f"  ·  {training.window_label(self._window)} (w)")
+            # Each also a click away: the window cycles as w does, what is shown toggles as a does.
+            text.append("  ·  ")
+            text.append(f"{training.window_label(self._window)} (w)", style=_CLICK_WINDOW)
             hidden = sum(sub_job.hidden(view) for view in training.VIEWS) if sub_job is not None else 0
-            if self._everything:
-                text.append("  ·  all metrics (a)")
-            elif hidden:
-                text.append(f"  ·  {hidden:,} hidden (a)")
+            if hidden or self._everything:
+                text.append("  ·  ")
+                text.append("all metrics (a)" if self._everything else "training signals (a)", style=_CLICK_EVERYTHING)
         notes = []
         if self._loading:
             notes.append(("cached · refreshing…" if sub_job else "loading training metrics…", CHART_MUTED))

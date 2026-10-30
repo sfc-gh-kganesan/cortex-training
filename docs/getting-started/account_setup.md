@@ -43,6 +43,15 @@ Share these three values with the Snowflake team. They will:
 You cannot proceed until this is complete. Once the team confirms enablement,
 continue to the next step.
 
+If you plan to [start a job from your own weights](../guides/training/external-weights.md),
+the role that uploads them needs the `CREATE STAGE` privilege on the target schema.
+Only the owner of the database (typically `SYSADMIN`) can grant it, so ask your
+account admin to run:
+
+```sql
+GRANT CREATE STAGE ON SCHEMA MY_DB.MY_SCHEMA TO ROLE MY_ROLE;
+```
+
 ## Step 3: Authenticate
 
 Generate a Programmatic Access Token (PAT) and configure your client connection.
@@ -132,7 +141,8 @@ Useful commands while jobs are running or after they complete:
 
 ```bash
 cortex-training list                  # list all your jobs
-cortex-training get JOB_ID            # detailed job info
+cortex-training get JOB_ID --raw      # detailed job info
+cortex-training get JOB_ID            # its config, to submit again
 cortex-training cancel JOB_ID         # cancel a job and release GPUs
 cortex-training tui                   # terminal UI for browsing jobs and logs
 ```

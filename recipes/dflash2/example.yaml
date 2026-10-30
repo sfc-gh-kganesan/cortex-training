@@ -1,0 +1,14 @@
+id: dflash2-draft
+title: DFlash2 speculative-decoding draft
+status: experimental
+task: spec-decode
+methods:
+  - full-parameter
+datasets:
+  - HuggingFaceH4/ultrachat_200k
+precision:
+  - bfloat16
+provenance:
+  project: sgl-project/SpecForge
+  recipe: online DFlash2 training (qwen3.5-4b-dflash2)
+last_validated: 2026-10-29

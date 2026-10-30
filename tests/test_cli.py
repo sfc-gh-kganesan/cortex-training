@@ -75,6 +75,8 @@ class FakeClient:
         self.stdout_log_output_dir = None
         self.metrics_job_id = None
         self.metrics_output_dir = None
+        self.experiment_run_job_id = None
+        self.experiment_run_error = None
 
     def create_job_from_body(self, body):
         self.submitted_body = body
@@ -86,6 +88,12 @@ class FakeClient:
 
     def get_job(self, job_id):
         return {"job_id": job_id, "status": "running"}
+
+    def get_experiment_run(self, job_id):
+        self.experiment_run_job_id = job_id
+        if self.experiment_run_error is not None:
+            raise self.experiment_run_error
+        return {"experiment_name": "DB.SCHEMA.EXPERIMENT", "experiment_run_name": "RUN"}
 
     def list_jobs(self, status=None):
         self.status_filter = status
@@ -1226,13 +1234,153 @@ def test_models_help_explains_model_availability(capsys):
     assert "List active models configured for new jobs." in capsys.readouterr().out
 
 
-def test_get_prints_job():
+
+
+def _record_factory(record, instances):
+    """A client factory whose client's get_job returns ``record``."""
+    def make_client(_args):
+        client = FakeClient()
+        client.get_job = lambda job_id: record
+        instances.append(client)
+        return client
+
+    return make_client
+
+
+def _get_record():
+    return {
+        "job_id": "j1",
+        "status": "RUNNING",
+        "hardware": "B200",
+        "comment": None,
+        "idle_timeout_seconds": 3600,
+        "image_tag": "some-image",
+        "sub_jobs": [
+            {
+                "sub_job_id": "j1:training:0",
+                "status": "RUNNING",
+                "job_type": "TRAINING",
+                "model_name": "gpt2",
+                "dtype": "bfloat16",
+                "seed": 42,
+                "training_config": {"max_seq_len": 128.0, "n_gpus": 2.0, "train_batch_size": 1.0,
+                                    "model_provider": "huggingface", "multiplex_job_id": None},
+            },
+            {
+                "sub_job_id": "j1:sampling:0",
+                "status": "RUNNING",
+                "job_type": "SAMPLING",
+                "model_name": "gpt2",
+                "inference_config": {"max_seq_len": 128.0, "n_gpus": 1.0,
+                                     "vllm_config": {"max_model_len": 128.0, "tensor_parallel_size": 1.0}},
+            },
+        ],
+    }
+
+
+def test_get_raw_prints_the_job_record():
     stdout = io.StringIO()
 
-    rc = cli.main(_base_args() + ["get", "j1"], client_factory=_factory([]), stdout=stdout)
+    rc = cli.main(_base_args() + ["get", "j1", "--raw"],
+                  client_factory=_record_factory(_get_record(), []), stdout=stdout)
 
     assert rc == 0
-    assert json.loads(stdout.getvalue()) == {"job_id": "j1", "status": "running"}
+    assert json.loads(stdout.getvalue()) == _get_record()
+
+
+def test_get_prints_a_body_that_submit_takes_as_it_is(tmp_path):
+    stdout = io.StringIO()
+
+    rc = cli.main(_base_args() + ["get", "j1"],
+                  client_factory=_record_factory(_get_record(), []), stdout=stdout)
+
+    assert rc == 0
+    body = json.loads(stdout.getvalue())
+    assert body == {
+        "hardware": "B200",
+        "comment": None,
+        "experiment_name": "DB.SCHEMA.EXPERIMENT",
+        "idle_timeout_seconds": 3600,
+        "pending_timeout_seconds": 86400,
+        "sub_job_configs": [
+            {
+                "job_type": "TRAINING",
+                "model_name": "gpt2",
+                "dtype": "bfloat16",
+                "seed": 42,
+                "source_checkpoint_info": None,
+                "training_config": {"max_seq_len": 128, "n_gpus": 2, "train_batch_size": 1,
+                                    "model_provider": "huggingface", "multiplex_job_id": None},
+            },
+            {
+                "job_type": "SAMPLING",
+                "model_name": "gpt2",
+                "dtype": None,
+                "seed": None,
+                "source_checkpoint_info": None,
+                "inference_config": {"max_seq_len": 128, "n_gpus": 1,
+                                     "vllm_config": {"max_model_len": 128, "tensor_parallel_size": 1}},
+            },
+        ],
+    }
+    path = tmp_path / "copy.json"
+    path.write_text(stdout.getvalue(), encoding="utf-8")
+    dry = io.StringIO()
+    assert cli.main(["submit", str(path), "--dry-run"], stdout=dry) == 0
+    assert json.loads(dry.getvalue()) == body
+    instances = []
+    assert cli.main(_base_args() + ["submit", str(path)], client_factory=_factory(instances),
+                    stdout=io.StringIO()) == 0
+    assert instances[0].submitted_body == body
+
+
+def test_get_says_when_it_cannot_read_the_experiment():
+    instances = []
+    stdout, stderr = io.StringIO(), io.StringIO()
+    factory = _record_factory(_get_record(), instances)
+
+    def make_client(args):
+        client = factory(args)
+        client.experiment_run_error = RuntimeError("HTTP 503")
+        return client
+
+    rc = cli.main(_base_args() + ["get", "j1"], client_factory=make_client, stdout=stdout, stderr=stderr)
+
+    assert rc == 0
+    assert instances[0].experiment_run_job_id == "j1"
+    assert json.loads(stdout.getvalue())["experiment_name"] is None
+    assert "warning: could not read the job's experiment (HTTP 503)" in stderr.getvalue()
+
+
+def test_get_reads_no_experiment_for_a_deployment():
+    record = _get_record()
+    record["sub_jobs"] = [{"job_type": "SAMPLING", "model_name": "gpt2",
+                           "inference_config": {"deployment_class": "EVALUATION", "n_gpus": 1}}]
+    instances = []
+    stdout = io.StringIO()
+
+    rc = cli.main(_base_args() + ["get", "j1"], client_factory=_record_factory(record, instances), stdout=stdout)
+
+    assert rc == 0
+    assert instances[0].experiment_run_job_id is None
+    body = json.loads(stdout.getvalue())
+    assert body["experiment_name"] is None and body["pending_timeout_seconds"] is None
+
+
+def test_get_says_why_a_record_cannot_be_copied():
+    record = _get_record()
+    del record["hardware"]  # the service could not read the job's details
+    instances = []
+    stdout, stderr = io.StringIO(), io.StringIO()
+
+    rc = cli.main(_base_args() + ["get", "j1"],
+                  client_factory=_record_factory(record, instances), stdout=stdout, stderr=stderr)
+
+    assert rc == 1
+    assert stdout.getvalue() == ""
+    assert instances[0].experiment_run_job_id is None  # no second read for a record it cannot copy
+    assert "error: the job record has no hardware" in stderr.getvalue()
+    assert "get --raw prints the job's record" in stderr.getvalue()
 
 
 def test_checkpoints_lists_checkpoints_for_job():

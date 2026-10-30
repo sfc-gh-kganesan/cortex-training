@@ -116,13 +116,18 @@ def test_job_action_help_shows_global_job_placement(command, capsys):
     assert "Place it before the subcommand." in " ".join(help_text.split())
 
 
-@pytest.mark.parametrize("command", ["get", "checkpoints", "cancel", "wait"])
-def test_job_management_help_keeps_positional_job(command, capsys):
+@pytest.mark.parametrize("command, usage", [
+    ("get", "get [-h] [--raw] job_id"),
+    ("checkpoints", "checkpoints [-h] job_id"),
+    ("cancel", "cancel [-h] job_id"),
+    ("wait", "wait [-h] job_id"),
+])
+def test_job_management_help_keeps_positional_job(command, usage, capsys):
     with pytest.raises(SystemExit) as exc:
         cortex_cli.parse_args([command, "--help"])
     assert exc.value.code == 0
     help_text = capsys.readouterr().out
-    assert f"usage: cortex-training {command} [-h] job_id" in help_text
+    assert f"usage: cortex-training {usage}" in help_text
     assert "--job" not in help_text
 
 

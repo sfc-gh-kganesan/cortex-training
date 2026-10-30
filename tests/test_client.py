@@ -2327,6 +2327,142 @@ class TestCreateJob:
         assert c.create_job_from_body(body) == {"job_id": "srv"}
 
 
+# ─── create_job_body_from_job — relaunching a job from its Get record ─────────
+
+
+def _job_record(**overrides):
+    """A Get job record with the service's own fields and an effective training config."""
+    record = {
+        "job_id": "job-id",
+        "status": "RUNNING",
+        "reason": "",
+        "created_at": "2026-07-20T18:00:00Z",
+        "updated_at": "2026-07-20T18:01:00Z",
+        "state_changed_at": "2026-07-20T18:01:00Z",
+        "image_tag": "some-image",
+        "owner_role": "SOME_ROLE",
+        "submitted_by": "SOME_USER",
+        "hardware": "B200",
+        "comment": "baseline",
+        "idle_timeout_seconds": 0,
+        "sub_jobs": [
+            {
+                "sub_job_id": "job-id:training:0",
+                "status": "RUNNING",
+                "job_type": "TRAINING",
+                "model_name": "Qwen/Qwen3-0.6B",
+                "dtype": "bfloat16",
+                "seed": 42,
+                "training_config": {
+                    "cuda_allocator_conf": None,
+                    "max_seq_len": 2048,
+                    "n_gpus": 1,
+                    "optimizer": {"name": "AdamW", "lr": 2e-05, "weight_decay": 0},
+                    "train_batch_size": 16,
+                },
+            }
+        ],
+    }
+    record.update(overrides)
+    return record
+
+
+class TestCreateJobBodyFromJob:
+    def test_keeps_what_can_be_set_and_drops_what_the_service_adds(self):
+        record = _job_record()
+        body = nc.create_job_body_from_job(record, experiment_name="DB.SCHEMA.EXPERIMENT")
+        assert body == {
+            "hardware": "B200",
+            "comment": "baseline",
+            "experiment_name": "DB.SCHEMA.EXPERIMENT",
+            "idle_timeout_seconds": 0,
+            "pending_timeout_seconds": 86_400,  # not set: the service's default
+            "sub_job_configs": [
+                {
+                    "job_type": "TRAINING",
+                    "model_name": "Qwen/Qwen3-0.6B",
+                    "dtype": "bfloat16",
+                    "seed": 42,
+                    "source_checkpoint_info": None,
+                    "training_config": record["sub_jobs"][0]["training_config"],
+                }
+            ],
+        }
+        # job_id would be refused: the service names each new job itself.
+        assert "job_id" not in body
+        assert record == _job_record()  # the record is left as it was
+
+    def test_a_field_the_record_leaves_out_has_the_value_the_job_runs_with(self):
+        record = _job_record(sub_jobs=[{
+            "sub_job_id": "job-id:sampling:0",
+            "status": "PLACING",
+            "job_type": "SAMPLING",
+            "model_name": "gpt2",
+            "inference_config": {"max_seq_len": 128, "n_gpus": 1},
+        }])
+        for key in ("comment", "idle_timeout_seconds"):
+            del record[key]
+        body = nc.create_job_body_from_job(record)
+        # Timeouts the job did not set are the service's defaults; no comment is null.
+        assert (body["idle_timeout_seconds"], body["pending_timeout_seconds"]) == (1800, 86_400)
+        assert body["comment"] is None
+        assert body["experiment_name"] is None  # none given: a copy gets an experiment of its own
+        sub_job = body["sub_job_configs"][0]
+        assert (sub_job["dtype"], sub_job["seed"], sub_job["source_checkpoint_info"]) == (None, None, None)
+
+    def test_a_deployment_keeps_null_what_it_cannot_set(self):
+        record = _job_record(idle_timeout_seconds=0, sub_jobs=[{
+            "sub_job_id": "job-id:sampling:0",
+            "job_type": "SAMPLING",
+            "model_name": "gpt2",
+            "inference_config": {"deployment_class": "EVALUATION", "n_gpus": 1},
+        }])
+        body = nc.create_job_body_from_job(record, experiment_name="DB.SCHEMA.EXPERIMENT")
+        assert body["idle_timeout_seconds"] == 0
+        assert body["pending_timeout_seconds"] is None and body["experiment_name"] is None
+
+    def test_whole_floats_of_a_submitted_config_come_back_as_ints(self):
+        # Until a sub-job's effective config is reported, the record has every number a float.
+        record = _job_record(sub_jobs=[{
+            "job_type": "SAMPLING",
+            "model_name": "gpt2",
+            "inference_config": {
+                "max_seq_len": 262144.0,
+                "n_gpus": 4.0,
+                "gpu_memory_utilization": 0.85,
+                "peft_config": {"peft_type": "Lora", "r": 8.0, "lora_alpha": 16.0, "target_modules": ["q_proj"]},
+            },
+        }])
+        config = nc.create_job_body_from_job(record)["sub_job_configs"][0]["inference_config"]
+        assert config["n_gpus"] == 4 and type(config["n_gpus"]) is int
+        assert type(config["max_seq_len"]) is int and config["gpu_memory_utilization"] == 0.85
+        # A LoRA r of 8.0 would fail the peft_config checks a submit runs.
+        assert type(config["peft_config"]["r"]) is int
+        nc._validate_raw_sub_job_configs([{"job_type": "SAMPLING", "inference_config": config}])
+
+    def test_keeps_a_checkpoint_source_without_its_reported_is_external(self):
+        source = {"checkpoint_id": "checkpoint-id", "source_job_id": "source-job-id", "is_external": False}
+        sub_job = {**_job_record()["sub_jobs"][0], "source_checkpoint_info": source}
+        body = nc.create_job_body_from_job(_job_record(sub_jobs=[sub_job]))
+        assert body["sub_job_configs"][0]["source_checkpoint_info"] == {
+            "checkpoint_id": "checkpoint-id", "source_job_id": "source-job-id"}
+
+    def test_leaves_the_stage_path_of_external_weights_to_fill_in(self):
+        # The record says only that the weights are external, not which.
+        sub_job = {**_job_record()["sub_jobs"][0], "source_checkpoint_info": {"is_external": True}}
+        body = nc.create_job_body_from_job(_job_record(sub_jobs=[sub_job]))
+        assert body["sub_job_configs"][0]["source_checkpoint_info"] == {"external_stage_path": None}
+
+    @pytest.mark.parametrize("overrides, message", [
+        ({"hardware": None}, "no hardware"),
+        ({"sub_jobs": []}, "no sub_jobs"),
+        ({"sub_jobs": ["training"]}, r"sub_jobs\[0\] is not an object"),
+    ])
+    def test_refuses_a_record_it_cannot_copy(self, overrides, message):
+        with pytest.raises(ValueError, match=message):
+            nc.create_job_body_from_job(_job_record(**overrides))
+
+
 # ─── CortexTrainingClient — transient HTTP retries ───────────────────────────
 
 

@@ -23,12 +23,48 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 from datetime import datetime
 from datetime import timezone
 from typing import Any
 
 from rich.cells import cell_len
+
+
+def finite_number(value: Any) -> float | None:
+    """``value`` as a finite float (a number or a numeric string); None for a bool, NaN,
+    Infinity (which json.loads reads), an int too big for a float, or anything else."""
+    if isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def short_seconds(seconds: float) -> str:
+    """A latency: ``420ms`` under a second, ``1.92s`` from one."""
+    return f"{seconds * 1000:.0f}ms" if seconds < 0.9995 else f"{seconds:.2f}s"
+
+
+def _drain_summary(entry: dict) -> str:
+    """A serving drain's numbers, which its line alone hides: ``16 req · p50 50ms · 2 replicas``."""
+    done = finite_number(entry.get("completed_requests"))
+    if done is None:
+        return ""
+    parts = [f"{int(done)} req"]
+    for key, label in (("latency_s_p50", "p50"), ("ttft_s_p99", "ttft p99")):
+        value = finite_number(entry.get(key))
+        if value is not None:
+            parts.append(f"{label} {short_seconds(value)}")
+    replicas, errors = finite_number(entry.get("replica_count")), finite_number(entry.get("replica_errors"))
+    if replicas is not None:
+        parts.append(f"{int(replicas)} replica{'' if replicas == 1 else 's'}")
+    if errors is not None and errors > 0:
+        parts.append(f"{int(errors)} replica error{'' if errors == 1 else 's'}")
+    return " · ".join(parts)
 
 
 def format_log_entry(entry: Any) -> str:
@@ -47,6 +83,10 @@ def format_log_entry(entry: Any) -> str:
     if msg is None:
         # Unknown shape: show the raw JSON so nothing is silently dropped.
         msg = json.dumps(entry, sort_keys=True)
+    if msg == "drain_metrics":
+        summary = _drain_summary(entry)
+        if summary:
+            msg = f"{msg}  {summary}"
     parts = []
     if ts:
         parts.append(ts)
@@ -338,6 +378,8 @@ def _record_lines(record: dict, when: str, actors: str) -> str:
     if logger := _first_field(record, _RECORD_LOGGER_FIELDS):
         head.append(f"{logger}:")
     head.append(msg if isinstance(msg, str) else json.dumps(msg, sort_keys=True))
+    if msg == "drain_metrics" and (summary := _drain_summary(record)):
+        head[-1] = f"{msg}  {summary}"
     lines = [" ".join(part for part in head if part)]
     for field in _ERROR_FIELDS:
         text = _failure_text(record.get(field)).strip()

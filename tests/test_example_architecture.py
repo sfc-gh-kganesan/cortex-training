@@ -27,6 +27,7 @@ EXAMPLE_FOLDERS = (
     "inference",
     "model_deployment",
     "distillation",
+    "dflash2",
     "skyrl/gsm8k_grpo",
 )
 
@@ -95,7 +96,7 @@ def _private_imports(path: Path) -> list[str]:
     ]
 
 
-@pytest.mark.parametrize("package", ["sft_quickstart", "rl_quickstart", "inference", "distillation"])
+@pytest.mark.parametrize("package", ["sft_quickstart", "rl_quickstart", "inference", "distillation", "dflash2"])
 def test_private_names_do_not_cross_module_boundaries(package):
     offenders = {
         str(path.relative_to(REPO_ROOT)): names
@@ -401,19 +402,21 @@ def test_every_example_ships_an_overrides_file_with_a_comment():
     sft = SFT_OVERRIDES
     inference = EXAMPLES / "inference" / "overrides.json"
     distillation_overrides = EXAMPLES / "distillation" / "overrides.json"
+    dflash2_overrides = EXAMPLES / "dflash2" / "overrides.json"
     assert set(EXAMPLES.rglob("overrides.json")) == {
         sft,
         RL_OVERRIDES,
         inference,
         distillation_overrides,
         DARE_OVERRIDES,
+        dflash2_overrides,
     }
 
     for path in (sft, inference):
         data = json.loads(path.read_text())
         assert set(data) == {"_comment"} and isinstance(data["_comment"], str) and data["_comment"]
 
-    for path in (RL_OVERRIDES, distillation_overrides, DARE_OVERRIDES):
+    for path in (RL_OVERRIDES, distillation_overrides, DARE_OVERRIDES, dflash2_overrides):
         assert isinstance(json.loads(path.read_text()).get("_comment"), str)
 
     dare = json.loads(DARE_OVERRIDES.read_text())

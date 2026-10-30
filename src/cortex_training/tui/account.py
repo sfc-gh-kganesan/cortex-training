@@ -234,16 +234,16 @@ def loaded_text(scope: Optional[ListScope]) -> str:
     return held + ("" if scope.active_missing else " and every active job") + f"; {_more(scope)}"
 
 
-def empty_text(scope: ListScope) -> str:
-    """The list's message when a walk cut short (or still loading) left no job to show."""
+def empty_text(scope: ListScope, what: str = "jobs") -> str:
+    """The list's message when a walk cut short (or still loading) left no job (or ``what``) to show."""
     where = f" in {scope.narrowed}" if scope.narrowed else ""
     which = "The account-wide list" if scope.kind == ACCOUNT else "This schema's list"
     if scope.loading:
-        return (f"{which} has no jobs to show among its newest {scope.walked:,}{where} yet; "
+        return (f"{which} has no {what} to show among its newest {scope.walked:,}{where} yet; "
                 f"{'older' if scope.loading == OLDER else 'older active'} jobs are still loading.")
     held = (f"in its first {scope.pages} pages" if scope.stopped == PAGE_LIMIT
             else f"among its newest {scope.walked:,}")
-    return f"{which} returned no jobs to show {held}{where}; more may exist. r reads it again."
+    return f"{which} returned no {what} to show {held}{where}; more may exist. r reads it again."
 
 
 def _one_line(text: str) -> str:

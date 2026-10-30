@@ -116,14 +116,23 @@ class ChatResult:
     usage: dict[str, Any] | None = None
 
 
+# What each status means for a deployment call; see rest-api.md section 14.8.
+_STATUS_HINTS = {
+    403: "the account or deployment may not be served here (see the message)",
+    404: "the deployment is unknown, not visible to you, failed, or was dropped",
+    405: "the inference routes may not be enabled on this account",
+    503: "the deployment is not READY yet, or is temporarily unavailable; retry shortly",
+}
+
+
 def _raise_for_status(response: requests.Response) -> None:
     if response.ok:
         return
     body = response.text[:ERROR_BODY_LIMIT]
-    if response.status_code == 404:
+    hint = _STATUS_HINTS.get(response.status_code)
+    if hint:
         raise DeploymentCallError(
-            "chat completions returned HTTP 404: inference may not be enabled on this "
-            f"account yet, or the deployment is not READY: {body}"
+            f"chat completions returned HTTP {response.status_code}: {hint}: {body}"
         )
     raise DeploymentCallError(f"chat completions returned HTTP {response.status_code}: {body}")
 

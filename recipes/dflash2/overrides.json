@@ -1,0 +1,20 @@
+{
+  "_comment": "DFlash2 draft-model training overrides: sets the dflash2 model provider with sdpa attention, keeps fp32 master weights with activation checkpointing off, leaves the fused LM-head token chunk size unset, and clears the ds_config batch-size fields so the example's own batch settings apply.",
+  "sub_job_configs": [
+    {
+      "job_type": "training",
+      "training_config": {
+        "model_provider": "dflash2",
+        "attn_implementation": "sdpa",
+        "activation_checkpointing": false,
+        "fp32_masters": true,
+        "fused_lm_head_token_chunk_size": null,
+        "ds_config": {
+          "train_batch_size": null,
+          "train_micro_batch_size_per_gpu": null,
+          "gradient_accumulation_steps": null
+        }
+      }
+    }
+  ]
+}

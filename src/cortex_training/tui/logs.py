@@ -108,6 +108,7 @@ from cortex_training.tui.resource import ResourceData
 from cortex_training.tui.resource import cached_metric_sources
 from cortex_training.tui.saved_log import committed_size
 from cortex_training.tui.saved_log import read_saved_tail
+from cortex_training.tui.serving_view import ServingPane
 from cortex_training.tui.widgets import _ERROR_LOG
 from cortex_training.tui.widgets import log_traceback
 from cortex_training.tui.widgets import FittedFooter
@@ -163,6 +164,7 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         Binding("g", "show_tab('resource')", "Resources", show=False),
         Binding("m", "show_tab('training')", "Training metrics", show=False),
         Binding("c", "show_tab('checkpoints')", "Checkpoints", show=False),
+        Binding("v", "show_tab('serving')", "Serving", show=False),
         # Checkpoints: s and o sort the list (on Logs, s saves the log; see check_action).
         Binding("s", "checkpoint_sort", "Sort"),
         Binding("o", "checkpoint_order", "Order"),
@@ -186,9 +188,10 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
     # its import of the Snowflake Connector would slow, or this long after the screen opens.
     _WARM_UP_AFTER_SECONDS = 1.5
     _LOG_ONLY = {"save_log", "cycle_level", "toggle_pause", "shrink_sources", "grow_sources", "filter", "jump"}
-    # The tabs, in the order t cycles them, and their names.
-    _TABS = ("logs", "resource", "training", "checkpoints")
-    _TAB_NAMES = {"logs": "Logs", "resource": "Resources", "training": "Training metrics", "checkpoints": "Checkpoints"}
+    # Every tab in compose order; t cycles the job's kind's own (views.job_tabs).
+    _TABS = ("serving", "logs", "resource", "training", "checkpoints")
+    _TAB_NAMES = {"serving": "Serving", "logs": "Logs", "resource": "Resources", "training": "Training metrics",
+                  "checkpoints": "Checkpoints"}
 
     class _Note(str):
         """A TUI-authored pane line distinguished by type, not text."""
@@ -251,6 +254,8 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         self._init_checkpoint_state()
         self._log_focus_id = "sources"
         self._metrics_root = job_dir / "metrics"
+        self._serving_root = job_dir / "serving"
+        self._tabs_shown: tuple | None = None  # the kind's tabs last applied (see _apply_tabs)
         # Per sub-job, what a download warned about (chunks it gave up on). The Logs
         # status line and the Resources header show the selected sub-job's.
         self._stdout_warnings: dict = {}
@@ -299,6 +304,9 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         yield Header(icon=theme.BRAND_ICON)
         yield Static("", id="summary")
         with JobTabs(initial=self._active_tab, id="job-tabs"):
+            with TabPane("Serving", id="serving"):
+                yield ServingPane(self._client, self._job_id, self._serving_root, job=self._tab_job,
+                                  download=self._download_serving_console, id="serving-tab")
             with TabPane("Logs", id="logs"):
                 with Horizontal(id="logs-body"):
                     yield _SourceList(id="sources")
@@ -336,6 +344,7 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         self.set_interval(LEASE_HEARTBEAT_SECONDS, self._lease.heartbeat)
         self._cache_limit = getattr(self.app, "_CACHE_LIMIT", DEFAULT_CACHE_LIMIT)
         self._render_summary_line()
+        self._apply_tabs()
         self.set_interval(self._DATA_REFRESH_SECONDS, self._auto_refresh_data)
         self.set_interval(self._STATUS_REFRESH_SECONDS, self._refresh_status)
         self._logview = self.query_one("#logview", Log)
@@ -397,8 +406,8 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         return self._active_tab == "resource"
 
     def _detail_pane(self):
-        """The Training metrics tab's pane, when it is shown (see detail_tabs.py)."""
-        if self._active_tab != "training":
+        """The Training metrics or Serving tab's pane, when it is the active tab (see detail_tabs.py)."""
+        if self._active_tab not in ("training", "serving"):
             return None
         try:
             return self.query_one(f"#{self._active_tab}-tab")
@@ -406,7 +415,7 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
             return None
 
     def _tab_job(self) -> dict:
-        """The job as this screen knows it, with its newest status, for the Training metrics tab."""
+        """The job as this screen knows it, with its newest status, for the Training metrics and Serving tabs."""
         return {**self._job, "status": self._job_status or self._job.get("status")}
 
     def _warm_up(self) -> None:
@@ -459,13 +468,75 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         self._after_telemetry_download(before)
         return True
 
+    def _tabs(self) -> tuple:
+        return views.job_tabs(self._job)
+
+    def _apply_tabs(self) -> None:
+        """UI thread. Show the tabs of the job's kind; a job opened by id learns it from its record."""
+        shown = self._tabs()
+        if shown == self._tabs_shown:
+            return
+        try:
+            tabs = self.query_one("#job-tabs", TabbedContent)
+        except NoMatches:  # not mounted yet: on_mount applies them
+            return
+        self._tabs_shown = shown
+        if self._active_tab not in shown:
+            tabs.active = "logs"
+        for tab in self._TABS:
+            if tab in shown:
+                tabs.show_tab(tab)
+            else:
+                tabs.hide_tab(tab)
+        self.refresh_bindings()
+
+    def _download_serving_console(self, *, sub_job_id, cancelled, progress=None) -> list | None:
+        """Worker thread. The Serving tab's download: the deployment's console, resumed, in a directory
+        and DownloadLock of its own. The Logs tab's saved console is kept or dropped by rules of its own
+        (_keep_console), so the two don't share files. Returns the download's warnings, or None when it
+        didn't run. ``progress(done, total)`` gets the chunk count a few times a second."""
+        lock = DownloadLock(self._serving_root)
+        if not lock.acquire(lambda: self._screen_open and not cancelled()):
+            return None
+        before = telemetry_bytes(self._serving_root)
+
+        last = [0.0]
+
+        def on_chunk(_sub_job_id: str, done: int, total: int, _bytes: int = 0) -> None:
+            if not self._screen_open or cancelled():
+                raise DownloadCancelled("the Serving tab closed")
+            now = time.monotonic()
+            if progress is None or last[0] < 0 or (done < total and now - last[0] < self._PROGRESS_SECONDS):
+                return
+            last[0] = now
+            try:
+                progress(done, total)
+            except Exception:  # noqa: BLE001 - a bug in drawing the count must not fail the download
+                last[0] = -1.0  # no more counts
+                log_traceback("showing the Serving download's progress failed (a bug in the TUI)")
+
+        try:
+            results = self._client.download_stdout_logs(
+                self._job_id, self._serving_root, resume=True, sub_job_ids=[sub_job_id],
+                on_chunk=on_chunk, **_quiet_download(self._client.download_stdout_logs))
+        except DownloadCancelled:  # the next open resumes from the chunks saved so far
+            results = None
+        finally:
+            lock.release()
+        self._after_telemetry_download(before, self._serving_root)
+        if results is None:
+            return None
+        warnings = _result_warnings(results, kind="stdout", job_id=self._job_id, output_dir=self._serving_root)
+        return warnings.get(sub_job_id, [])
+
     def action_show_tab(self, tab: str) -> None:
         self.query_one("#job-tabs", TabbedContent).active = tab
 
     def action_cycle_tab(self) -> None:
         tabs = self.query_one("#job-tabs", TabbedContent)
-        index = self._TABS.index(self._active_tab) if self._active_tab in self._TABS else -1
-        tabs.active = self._TABS[(index + 1) % len(self._TABS)]
+        shown = self._tabs()
+        index = shown.index(self._active_tab) if self._active_tab in shown else -1
+        tabs.active = shown[(index + 1) % len(shown)]
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         # Ignore queued stale activations, which would re-activate each other.
@@ -480,7 +551,12 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
             self._log_focus_id = focused.id
         pane = self._detail_pane()
         if pane is not None:
+            reopened = isinstance(pane, ServingPane) and pane.opened
             pane.activate()  # it claims the focus itself (see detail_tabs.claim_focus)
+            if reopened and (self._serving_may_change() or pane.status_changed_since_read):
+                # Only the tab on screen polls, so drains (or the job's end) may have come while it was off
+                # screen. The download resumes: this fetches only new chunks.
+                pane.reload()
             return
         if self._resource_active():
             self.set_focus(self.query_one("#resource-list", ListView))  # its arrows pick a view or unit
@@ -672,7 +748,9 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         least = self._SUMMARY_LEAST
         # The job id in bold, its status badge, then chips for what the job is, and
         # the reason. The models are cut to keep the line on one row; the rest stays whole.
-        segments = [(job_id, f"bold {theme.TEXT}", None, False), theme.status_badge(job.get("status")),
+        # A deployment's badge in its own words (ready, ...); a job's as the badge words it.
+        badge_word = views.status_word_for(job, job.get("status")) if views.is_deployment(job) else None
+        segments = [(job_id, f"bold {theme.TEXT}", None, False), theme.status_badge(job.get("status"), word=badge_word),
                     (views.job_type_label(job), "", None, True),
                     (", ".join(views.job_models(job)) or "—", "", least, True),
                     (scope, "", None, True), *([(location, "", None, True)] if location else []),
@@ -712,6 +790,8 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
             return self._resource_active()
         if action in ("checkpoint_sort", "checkpoint_order", "checkpoint_download"):
             return self._checkpoints_active()
+        if action == "show_tab":
+            return not parameters or parameters[0] in self._tabs()  # a hidden tab's key does nothing
         return True
 
     def action_filter(self) -> None:
@@ -1249,7 +1329,8 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         shown = sid == self._current_source
         return Content.assemble((f"{look.glyph} ", look.color),
                                 (self._source_label(sid), f"bold {theme.TEXT}" if shown else ""),
-                                ("\n  " + word, theme.TEXT if shown else theme.FAINT))
+                                ("\n  " + views.status_word_for(self._job, word),
+                                 theme.TEXT if shown else theme.FAINT))
 
     def _paint_sources(self) -> None:
         """UI thread. Draw the sub-job list again: which one the pane shows, and each one's status."""
@@ -1830,6 +1911,12 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         self._paint_sources()
         if self._resource_active():
             self._render_resource()
+        if not views.is_live(self._tab_job()):
+            # Serving redraws only when it reloads, and the live refresh has stopped: one last read
+            # shows it ended. Off screen, it reads again when it is next opened (on_tabbed_content_tab_activated).
+            pane = self._detail_pane()
+            if isinstance(pane, ServingPane) and pane.opened:
+                pane.reload()
 
     @staticmethod
     def _sub_statuses(job: dict) -> dict[str, str]:
@@ -1844,9 +1931,18 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
     def _live(self) -> bool:
         return views.is_live(self._ended_job())
 
+    def _dropping(self) -> bool:
+        """A deployment being dropped: not live, but its status still changes to the end."""
+        return views.is_deployment(self._job) and views.status_word(self._job_status) == "cancelling"
+
+    def _serving_may_change(self) -> bool:
+        """New drains may still arrive: the job is live or dropping, or ended before its last could upload."""
+        return (self._live() or self._dropping()
+                or self._console_may_be_incomplete(self._active_seen_at, self._state_changed_at))
+
     def _refresh_status(self) -> None:
         # The tail pauses off the Logs tab, so it can't be what notices the job ending.
-        if self.app.screen is self and self._live():
+        if self.app.screen is self and (self._live() or self._dropping()):
             self._fetch_status()
 
     @work(thread=True, exclusive=True, group="status")
@@ -1882,7 +1978,13 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
     def _auto_refresh_data(self) -> None:
         # Only the visible tab polls, and only while the job is live. Resources waits
         # until the status check sees the shown sub-job running: before that it has no samples.
-        if self.app.screen is not self or not self._live():
+        if self.app.screen is not self:
+            return
+        if not self._live():
+            # A deployment's drains go on while it is dropped, and are uploaded for a while after it ends.
+            pane = self._detail_pane()
+            if isinstance(pane, ServingPane) and pane.opened and self._serving_may_change():
+                pane.reload()
             return
         if self._resource_active() and self._resource_waiting() is None:
             self._start_resource_refresh(force=True)
@@ -1930,6 +2032,7 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         # the tail can see the job end before the status check does. The service's fields come
         # only from the fresh answer, so a reason it stopped sending disappears from the line.
         self._job = views.refresh_job(self._job, job)
+        self._apply_tabs()
         if job.get("status"):
             self._job_reason = job.get("reason")
         self._render_summary_line()
@@ -1958,15 +2061,19 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
             # As the summary line puts them: "reason — reason_details".
             why = " — ".join(one_line(x).strip() for x in (self._job_reason, self._job_reason_details)
                              if x and str(x).strip())
-            return (f"waiting: the job is {job_word.upper()}" + (f" ({why})" if why else "")
+            return (f"waiting: the job is {self._said(job_word)}" + (f" ({why})" if why else "")
                     + f"; the log tail starts by itself when the job starts {hint}")
         if word in self._PRE_PLACEMENT:
-            return (f"waiting: {views.sub_job_label(sub_job_id)} is {word.upper()}; "
+            return (f"waiting: {views.sub_job_label(sub_job_id)} is {self._said(word)}; "
                     f"its log tail starts by itself once it is placed {hint}")
         # The service refused the tail as pending placement while the status
         # says otherwise (UNKNOWN when the service couldn't read the job's state).
         return (f"waiting: the service says the job is pending placement (its status reads "
-                f"{job_word.upper()}); the log tail starts by itself when the job starts {hint}")
+                f"{self._said(job_word)}); the log tail starts by itself when the job starts {hint}")
+
+    def _said(self, word: str) -> str:
+        """A status word as the badge says it: a deployment's in its own words (INITIALIZING, not PLACING)."""
+        return views.status_word_for(self._job, word).upper()
 
     def _waiting_for(self, sub_job_id: str) -> tuple[str, str] | None:
         """The wait, if any, before ``sub_job_id`` can have logs: (kind, note)."""
@@ -1974,7 +2081,7 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
         if word in self._PRE_PLACEMENT:
             return "pending", self._pending_note(sub_job_id)
         if word in self._STARTING:
-            return "starting", (f"waiting: {views.sub_job_label(sub_job_id)} is {word.upper()}; "
+            return "starting", (f"waiting: {views.sub_job_label(sub_job_id)} is {self._said(word)}; "
                                 "its log appears here once it is up")
         if views.status_word(self._job_status) == "unknown":
             # The service couldn't read the job's state: its tail may not answer either. It is tried.
@@ -2633,10 +2740,11 @@ class LogScreen(ResourceTab, CheckpointTab, FollowsPointer, Screen):
                         "job's status changes (r tries now)")
             else:
                 note = (f"waiting: {name} hasn't started yet (the service isn't routing to it); "
-                        "the tail starts again once it is running")
+                        f"the tail starts again once it is {views.status_word_for(self._job, 'running')}")
             self._set_waiting("stopped", note)
         else:
-            self._set_waiting("stopped", f"waiting: {name} is {why.upper()}; the tail starts again once it is running")
+            self._set_waiting("stopped", f"waiting: {name} is {self._said(why)}; "
+                              f"the tail starts again once it is {views.status_word_for(self._job, 'running')}")
 
     def _run_download(self, sub_job_id: str) -> None:
         """Worker thread. The saved-console download this view claimed (see _claim_stdout):

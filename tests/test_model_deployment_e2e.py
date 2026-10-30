@@ -212,6 +212,13 @@ def test_tc5_wait_returns_the_create_wait_summary(ready_deployment):
     assert time.monotonic() - started < 60
 
 
+def skip_if_not_permitted(status_code: int, body: str) -> None:
+    # Only account-level refusals skip. A 404, or a 403 such as
+    # deployment_class_not_served, is a real failure for a READY deployment.
+    if status_code == 405 or (status_code == 403 and "feature_disabled" in body):
+        pytest.skip(f"this account may not call deployments (HTTP {status_code})")
+
+
 def test_tc6_base_url_serves_openai_chat_completions(ready_deployment):
     config = load_config()
     pat = config.get("pat") or os.environ.get("CORTEX_TRAINING_PAT")
@@ -230,8 +237,7 @@ def test_tc6_base_url_serves_openai_chat_completions(ready_deployment):
         json={"model": deployment_id, "messages": [{"role": "user", "content": "Hello"}]},
         timeout=300,
     )
-    if response.status_code == 404:
-        pytest.skip("inference is not enabled on this account (HTTP 404)")
+    skip_if_not_permitted(response.status_code, response.text)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["object"] == "chat.completion"
@@ -252,8 +258,7 @@ def test_tc6_models_lists_the_ready_deployment(ready_deployment):
         headers=deployment_headers(deployment_pat()),
         timeout=60,
     )
-    if models.status_code == 404:
-        pytest.skip("inference is not enabled on this account (HTTP 404)")
+    skip_if_not_permitted(models.status_code, models.text)
     assert models.status_code == 200, models.text
     assert ready_deployment["deployment"] in {model["id"] for model in models.json()["data"]}
 
@@ -282,8 +287,7 @@ def test_tc6_base_url_streams_chat_completions_as_sse(ready_deployment):
         stream=True,
         timeout=300,
     ) as response:
-        if response.status_code == 404:
-            pytest.skip("inference is not enabled on this account (HTTP 404)")
+        skip_if_not_permitted(response.status_code, response.text)
         assert response.status_code == 200, response.text
         assert response.headers["Content-Type"].startswith("text/event-stream")
         lines = list(response.iter_lines(decode_unicode=True))
@@ -320,8 +324,9 @@ def test_tc6_example_stream_chat_reads_the_deployment(ready_deployment):
             on_delta=deltas.append,
         )
     except RuntimeError as exc:
-        if "HTTP 404" in str(exc):
-            pytest.skip("inference is not enabled on this account (HTTP 404)")
+        status = re.search(r"returned HTTP (\d+):", str(exc))
+        if status:
+            skip_if_not_permitted(int(status[1]), str(exc))
         raise
 
     assert len(deltas) > 1, deltas
@@ -345,8 +350,7 @@ def test_tc6_max_tokens_is_rejected_in_favor_of_max_completion_tokens(ready_depl
         },
         timeout=300,
     )
-    if response.status_code == 404:
-        pytest.skip("inference is not enabled on this account (HTTP 404)")
+    skip_if_not_permitted(response.status_code, response.text)
     assert response.status_code == 400, response.text
     error = response.json()["error"]
     assert (error["param"], error["code"]) == ("max_tokens", "unsupported_parameter")

@@ -12,6 +12,7 @@ type on the command line instead of writing a job file.
 | [On-policy distillation](distillation/README.md) | Distillation from a frozen teacher | GSM8K |
 | [Inference endpoint](inference/README.md) | Serve, generate, evaluate open weights or a checkpoint | MATH-500, GSM8K, identity |
 | [Model deployment streaming](model_deployment/README.md) | OpenAI-compatible model deployment, streamed chat | Open weights, checkpoints |
+| [DFlash2 draft](dflash2/README.md) | Speculative-decoding draft training, then serving with the target | Target-written chats (UltraChat prompts) |
 | [SkyRL GRPO](skyrl/gsm8k_grpo/README.md) | SkyRL trainer on CPU driver + Cortex training/sampling sub-jobs | GSM8K |
 | [Tinker Cookbook](tinker/README.md) | Run `tinker-cookbook` recipes or `ServiceClient` on Cortex | GSM8K, MATH, etc. |
 | [OpenHands & Harbor RL](openhands/README.md) | Train an OpenHands or Harbor agent with online GSPO/GRPO | SWE-smith code localization, Harbor tasks (`Terminal-Bench 2.0`, etc.) |
@@ -25,6 +26,7 @@ recipes/
 ├── rl_quickstart/           # runner.py (shared loop), overrides.json, math_grpo/, configs/ (generated)
 ├── distillation/            # on_policy/, overrides.json, configs/ (generated)
 ├── inference/               # serve.py, generate.py, evaluate.py, overrides.json
+├── dflash2/                 # generate_data.py, train.py, evaluate.py, overrides.json, drafts/<model>.json
 ├── model_deployment/        # deploy.py, streaming.py, configs/
 ├── api_quickstart/          # raw REST API request bodies
 ├── skyrl/                   # SkyRL GRPO recipe

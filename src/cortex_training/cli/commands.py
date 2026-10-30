@@ -456,8 +456,16 @@ def build_parser(
         help="Wait until the submitted job reaches running.",
     )
 
-    get = subparsers.add_parser("get", help="Fetch one Cortex Training job.")
+    get = subparsers.add_parser(
+        "get",
+        help="Print one Cortex Training job's config, a CreateJob body that submit takes as it is.",
+    )
     get.add_argument("job_id")
+    get.add_argument(
+        "--raw",
+        action="store_true",
+        help="Print the job's record as the service returns it: status, sub-job ids, times.",
+    )
 
     checkpoints = subparsers.add_parser(
         "checkpoints",
@@ -575,7 +583,7 @@ def build_parser(
             "Training sub-job to load the checkpoint into, e.g. JOB_ID:training:0. "
             "Use this when you need explicit routing control; a job has at most one "
             "training sub-job, so omitting it uses that sub-job. "
-            "Use 'cortex-training get JOB_ID' to discover available sub-job IDs."
+            "Use 'cortex-training get JOB_ID --raw' to discover available sub-job IDs."
         ),
     )
     load.add_argument(
@@ -674,6 +682,27 @@ def build_parser(
         ),
     )
     _add_chunk_download_arguments(download_log, "--log-type stdout")
+
+    download_checkpoint = subparsers.add_parser(
+        "download-checkpoint",
+        help="Export and download one listed Cortex Training checkpoint.",
+    )
+    download_checkpoint.add_argument("job_id")
+    download_checkpoint.add_argument("checkpoint_id")
+    download_checkpoint.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory to receive the export's relative file tree.",
+    )
+    download_checkpoint.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        help=(
+            "Download only filenames matching this shell-style glob. "
+            "Repeatable; omitted means every file."
+        ),
+    )
 
     download_metrics = subparsers.add_parser(
         "download-metrics",
@@ -1258,6 +1287,38 @@ def _cmd_submit(
     return 0
 
 
+def _cmd_get(args: argparse.Namespace, client, stdout: TextIO, stderr: TextIO) -> int:
+    job = client.get_job(args.job_id)
+    if args.raw:
+        _print_json(job, stdout, compact=args.compact)
+        return 0
+    from cortex_training.client.core import _model_deployment_sub_job
+    from cortex_training.client.core import create_job_body_from_job
+
+    try:
+        body = create_job_body_from_job(job)  # first: a record it cannot copy fails before another read
+    except ValueError as exc:
+        raise ValueError(f"{exc} (get --raw prints the job's record as the service returned it)") from None
+    if _model_deployment_sub_job(job) is None:  # a deployment sets no experiment
+        body = create_job_body_from_job(job, experiment_name=_job_experiment_name(client, args.job_id, stderr))
+    _print_json(body, stdout, compact=args.compact)
+    return 0
+
+
+def _job_experiment_name(client, job_id: str, stderr: TextIO) -> str | None:
+    """The job's experiment, or None with a warning when the service does not say."""
+    try:
+        run = client.get_experiment_run(job_id)
+        name = run.get("experiment_name") if isinstance(run, dict) else None
+        if not isinstance(name, str) or not name:
+            raise ValueError("the service sent no experiment_name")
+        return name
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"warning: could not read the job's experiment ({exc}); experiment_name is null, "
+              "so a job submitted from this gets an experiment of its own", file=stderr)
+        return None
+
+
 def _cmd_list(args: argparse.Namespace, client, stdout: TextIO) -> int:
     if args.all:
         jobs = list(
@@ -1723,6 +1784,37 @@ def _cmd_download_log(
     return 0
 
 
+def _cmd_download_checkpoint(
+    args: argparse.Namespace, client, stdout: TextIO, stderr: TextIO
+) -> int:
+    from cortex_training._checkpoint_download import download_checkpoint
+
+    progress = _artifact_progress_writer(stderr)
+
+    def on_progress(done: int, total: int, files_done: int, file_count: int) -> None:
+        fraction = done / total if total else files_done / file_count
+        filled = int(fraction * 20)
+        bar = "#" * filled + "-" * (20 - filled)
+        progress(
+            f"Checkpoint [{bar}] {fraction:4.0%} "
+            f"{done:,}/{total:,} bytes ({files_done}/{file_count} files)"
+        )
+
+    try:
+        result = download_checkpoint(
+            client,
+            args.job_id,
+            args.checkpoint_id,
+            args.output_dir,
+            args.include,
+            on_progress=on_progress,
+        )
+    finally:
+        progress("\n")
+    _print_json(result, stdout, compact=args.compact)
+    return 0
+
+
 def _cmd_download_metrics(
     args: argparse.Namespace, client, stdout: TextIO, stderr: TextIO
 ) -> int:
@@ -1971,8 +2063,7 @@ def _run(
     if args.command == "submit":
         return _cmd_submit(args, client, stdout, stdin)
     if args.command == "get":
-        _print_json(client.get_job(args.job_id), stdout, compact=args.compact)
-        return 0
+        return _cmd_get(args, client, stdout, stderr)
     if args.command == "checkpoints":
         _print_json(
             {"checkpoints": client.list_checkpoints(args.job_id)},
@@ -2014,6 +2105,8 @@ def _run(
         return _cmd_weight_sync(args, client, stdout)
     if args.command == "download-log":
         return _cmd_download_log(args, client, stdout, stderr)
+    if args.command == "download-checkpoint":
+        return _cmd_download_checkpoint(args, client, stdout, stderr)
     if args.command == "download-metrics":
         return _cmd_download_metrics(args, client, stdout, stderr)
     if args.command == "model-deployment":
@@ -2068,6 +2161,12 @@ def main(
         return 130
     except KeyboardInterrupt as exc:
         command = getattr(args, "command", None)
+        if command == "download-checkpoint":
+            print(
+                "interrupted; rerun the same command to resume checkpoint downloads",
+                file=stderr,
+            )
+            return 130
         if command not in _CHUNK_DOWNLOAD_COMMANDS:
             raise
         if not _resumable_download(args):

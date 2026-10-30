@@ -124,7 +124,7 @@ def test_training_tab_downloads_and_draws_each_metric():
             assert "training #0" in status and "step 2" in status and "5 calls" in status
             assert "all steps (w)" in status and "(v)" not in status
             # global_steps and update_successful (per step) and rank (per call) are bookkeeping.
-            assert "3 hidden (a)" in status
+            assert "training signals (a)" in status
             assert "1 step reported update_successful ≠ 1" in status
             # Both views on the one tab. Per step first: the step rows' numbers, as saved.
             stats = _text(screen, "#training-step-stats")
@@ -152,7 +152,7 @@ def test_training_tab_downloads_and_draws_each_metric():
             assert [line.split()[0] for line in _text(screen, "#training-call-stats").splitlines()[2:]] == \
                 ["avg_loss", "rank"]
             await pilot.press("a")
-            assert "3 hidden (a)" in _text(screen, "#training-status")
+            assert "training signals (a)" in _text(screen, "#training-status")
             assert "rank" not in _text(screen, "#training-call-stats")
 
             # The window applies to both.
@@ -160,6 +160,36 @@ def test_training_tab_downloads_and_draws_each_metric():
             assert "last 100 steps (w)" in _text(screen, "#training-status")
             assert "grad_norm · per step · last 100 steps" in _text(screen, "#training-step-charts")
             assert "avg_loss · per call · last 100 steps" in _text(screen, "#training-call-charts")
+            await _settle(app, pilot)
+
+    asyncio.run(run())
+
+
+def test_a_click_on_the_header_s_window_or_metrics_does_what_w_or_a_does():
+    async def run():
+        c = _client()
+        app = CortexTrainingLogTUI(c, "7", poll_interval=0.01)
+        async with app.run_test(size=(200, 40)) as pilot:  # wide enough for the header on one line
+            screen = await _open(app, pilot)
+            await pilot.press("m")
+            pane = screen.query_one("#training-tab")
+            assert await _wait(pilot, lambda: pane._downloaded and not pane._loading)
+
+            async def click(words):
+                line = _text(screen, "#training-status").splitlines()[0]
+                # One cell into the words; the header's padding is one cell.
+                await pilot.click("#training-status", offset=(1 + line.index(words) + 1, 0))
+                await pilot.pause()
+
+            await click("all steps (w)")
+            assert "last 100 steps (w)" in _text(screen, "#training-status")
+            assert "grad_norm · per step · last 100 steps" in _text(screen, "#training-step-charts")
+            await click("training signals")
+            assert "all metrics (a)" in _text(screen, "#training-status")
+            assert "global_steps" in _text(screen, "#training-step-stats")
+            await click("all metrics")
+            assert "training signals (a)" in _text(screen, "#training-status")
+            assert "global_steps" not in _text(screen, "#training-step-stats")
             await _settle(app, pilot)
 
     asyncio.run(run())

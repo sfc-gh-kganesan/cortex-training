@@ -77,8 +77,9 @@ _KEYED_JOB = re.compile(r"[0-9a-f]{16}%3A[A-Za-z0-9._%-]+")
 _BARE_JOB = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 # ``stdout`` and ``.stdout.lock``: where TUIs from before the saved console moved to
 # ``console`` kept it, so a job one of them cached is still the cache's to count and remove.
-_JOB_ENTRIES = frozenset({"logs", "console", "metrics", "cursors.json", ".lease", ".leases", ".last-used",
-                          ".metrics.lock", ".console.lock", ".cursors.lock", "stdout", ".stdout.lock"})
+_JOB_ENTRIES = frozenset({"logs", "console", "metrics", "serving", "cursors.json", ".lease", ".leases",
+                          ".last-used", ".metrics.lock", ".console.lock", ".serving.lock", ".cursors.lock", "stdout",
+                          ".stdout.lock"})
 _JOB_ENTRY_PREFIXES = (".console-", ".tmp-")
 # Files the operating system leaves in a directory someone looked at: Finder's .DS_Store and
 # AppleDouble ._ files, and NFS's .nfs files for one deleted while open. Counted as part of
@@ -431,7 +432,7 @@ def _remove_unless_in_use(job_dir: Path, now: float) -> str:
             # removing the job could race a screen opening it.
             if fd is None or _try_exclusive(fd) is False:
                 return "in_use"
-        for part in ("metrics", "console"):
+        for part in ("metrics", "console", "serving"):
             path = job_dir / part
             if path.is_symlink():
                 continue

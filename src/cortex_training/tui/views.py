@@ -37,10 +37,19 @@ from typing import Optional
 import requests
 from rich.cells import cell_len
 
+from cortex_training.client.core import _deployment_id_from_job_id
+from cortex_training.client.core import _model_deployment_status
+from cortex_training.client.core import _model_deployment_sub_job
+from cortex_training.client.core import create_job_body_from_job
+from cortex_training.model_deployment import DEPLOYMENT_STATUSES_WITHOUT_ENDPOINT
+from cortex_training.model_deployment import WIRE_DEPLOYMENT_CLASS
+from cortex_training.model_deployment import WIRE_INFERENCE_CONFIG
+from cortex_training.model_deployment import WIRE_NUM_REPLICAS
 from cortex_training.tui.format import _ACTIVE_STATUSES as ACTIVE_STATUSES
 from cortex_training.tui.format import _num as compact_number
 from cortex_training.tui.format import cut_cells
 from cortex_training.tui.format import _subjob_config as subjob_config
+from cortex_training.tui.format import finite_number as _as_float
 from cortex_training.tui.format import format_created_at
 from cortex_training.tui.format import local_time
 from cortex_training.tui.format import parse_ts  # noqa: F401 - views.parse_ts for the screens
@@ -313,6 +322,64 @@ def sub_jobs(job: dict) -> list:
             for i, (sj, kind) in enumerate(zip(subs, kinds))]
 
 
+def is_deployment(job: Any) -> bool:
+    """Whether a job is a model deployment, by the CLI's own rule (the client's
+    ``_model_deployment_sub_job``), so the TUI and ``ct`` never disagree."""
+    return _model_deployment_sub_job(job) is not None
+
+
+def deployment_class(job: Any) -> str:
+    """``EVALUATION``, ...; ``""`` for a job that isn't a deployment."""
+    sj = _model_deployment_sub_job(job)
+    return str(sj[WIRE_INFERENCE_CONFIG].get(WIRE_DEPLOYMENT_CLASS) or "") if sj else ""
+
+
+def deployment_sub_job_id(job: Any) -> Optional[str]:
+    """The sub-job that serves the deployment. An UNKNOWN job's is found the way :func:`sub_jobs` finds it."""
+    if _model_deployment_sub_job(job) is None:
+        return None
+    sid = sub_jobs(job)[0].get("sub_job_id")
+    return str(sid) if sid else None
+
+
+def job_tabs(job: Any) -> tuple:
+    """The job screen's tabs for ``job``, in order: a deployment has Serving and no Training
+    metrics or Checkpoints."""
+    if is_deployment(job):
+        return ("serving", "logs", "resource")
+    return ("logs", "resource", "training", "checkpoints")
+
+
+def status_word_for(job: Any, status: Any) -> str:
+    """``status`` (the job's, or one of its sub-jobs') as the screens word it: a
+    deployment's in the CLI's deployment words (``RUNNING`` -> ``ready``)."""
+    if is_deployment(job) and status_word(status) != "?":  # the CLI reads no status as its UNKNOWN
+        return _model_deployment_status({"status": status}).lower()
+    return status_word(status)
+
+
+def _call_as(job: dict) -> str:
+    try:
+        return _deployment_id_from_job_id(job_id_of(job))
+    except ValueError:  # the client won't name this job; neither does the TUI
+        return ""
+
+
+def deployment_facts(job: dict) -> list:
+    """The preview's deployment rows: class, replicas, idle timeout and the model name to call."""
+    cfg = _model_deployment_sub_job(job)[WIRE_INFERENCE_CONFIG]
+    replicas = _as_float(cfg.get(WIRE_NUM_REPLICAS))
+    idle = _as_float(job.get("idle_timeout_seconds"))
+    call_as = _call_as(job)
+    return [
+        ("Class", deployment_class(job)),
+        ("Replicas", str(int(replicas)) if replicas is not None else "—"),
+        # 0 disables reclamation; none set means the server's own setting.
+        ("Idle timeout", "off" if idle == 0 else "server default" if idle is None else fmt_duration(idle)),
+        *([("Call as", call_as)] if call_as else []),
+    ]
+
+
 def sub_job_type(sj: dict) -> str:
     """The normalized type shown in lists and log tags."""
     return sub_job_kind(sj) or str(sj.get("job_type") or sj.get("type") or "").strip().lower().removeprefix("job_type_")
@@ -343,6 +410,8 @@ _SHORT_KINDS = {"training": "train", "sampling": "sample", "log_prob": "logprob"
 
 def job_type_label(job: dict) -> str:
     """One kind, or a compact ``train+sample``-style combination."""
+    if is_deployment(job):
+        return "deployment"
     kinds = list(dict.fromkeys(job_types(job)))
     if len(kinds) > 1 and all(kind in _SHORT_KINDS for kind in kinds):
         return "+".join(_SHORT_KINDS[kind] for kind in _SHORT_KINDS if kind in kinds)
@@ -481,31 +550,31 @@ def within_retention(job: dict, now: datetime, days: int = RETENTION_DAYS) -> bo
     return created is None or (now - created).total_seconds() <= days * 86400
 
 
-# A sub-job entry's fields the service adds, not part of what was submitted (and
-# the label :func:`sub_jobs` adds to an entry without an id).
-_NOT_SUBMITTED = frozenset({"sub_job_id", "status", "label"})
+def job_config_json(job: dict, sub_job: Optional[dict] = None, *, experiment_name: Optional[str] = None) -> list:
+    """The job's config as the lines ``cortex-training get`` prints: a CreateJob
+    body that ``submit`` takes as it is, with ``experiment_name`` the job's
+    experiment (see the client's ``create_job_body_from_job``). With ``sub_job``,
+    one of the job's entries, the body has that sub-job alone, so a copy of it
+    launches just that one. Raises ``ValueError`` for a job that cannot be copied."""
+    if sub_job is not None:
+        # Without the label sub_jobs gives an entry that has no id.
+        job = {**job, "sub_jobs": [{key: value for key, value in sub_job.items() if key != "label"}]}
+    return json.dumps(create_job_body_from_job(job, experiment_name=experiment_name),
+                      indent=2, sort_keys=True).splitlines()
 
 
-def subjob_config_json(sj: dict) -> list:
-    """One sub-job's submitted config as the lines ``cortex-training get`` prints
-    for it: its entry in the job record (type, model, dtype, seed and its
-    training or inference config) without the fields the service adds, as
-    indented JSON by key, values exactly as the service returned them."""
-    submitted = {key: value for key, value in sj.items() if key not in _NOT_SUBMITTED}
-    return json.dumps(submitted, indent=2, sort_keys=True, default=str).splitlines()
-
-
-def preview_facts(job: dict, now: datetime) -> list:
+def preview_facts(job: dict, now: datetime, *, base_url: str = "") -> list:
     """(label, value) facts for the job preview's grid, in display order.
 
     The id, status and elapsed time head the preview, and its lifecycle has a
     row of its own, so they are not here. A time the job record lacks is ``—``,
-    with no "ago" after it.
+    with no "ago" after it. A deployment adds its own rows (class, replicas,
+    idle timeout, the model name to call) right after Type.
     """
     location = location_label(job)
     # The age only beside a time that is shown: a dash has none.
     updated, ago = format_created_at(job.get("updated_at")) or "—", fmt_ago(job.get("updated_at"), now)
-    return [
+    facts = [
         ("Model", ", ".join(job_models(job)) or "—"),
         ("Type", job_type_label(job)),
         ("GPUs", gpu_request_text(job)),
@@ -514,6 +583,11 @@ def preview_facts(job: dict, now: datetime) -> list:
         ("Last update", f"{updated}  ({ago})" if "—" not in (updated, ago) else updated),
         *([("Schema", location)] if location else []),
     ]
+    if is_deployment(job):
+        # The CLI's rule: a deployment that failed or is being dropped no longer serves.
+        serves = _model_deployment_status(job) not in DEPLOYMENT_STATUSES_WITHOUT_ENDPOINT
+        facts[2:2] = [*deployment_facts(job), *([("Base URL", base_url)] if base_url and serves else [])]
+    return facts
 
 
 def elapsed_text(job: dict, now: datetime) -> str:
@@ -701,7 +775,15 @@ SERVICE_FIELDS = ("status", "reason", "reason_details", "updated_at", "state_cha
 def refresh_job(current: Optional[dict], fresh: dict) -> dict:
     """``current`` (say, a list row) updated with a fresh ``get_job`` answer (see :data:`SERVICE_FIELDS`)."""
     kept = {k: val for k, val in (current or {}).items() if k not in SERVICE_FIELDS}
-    return {**kept, **fresh}
+    return {**kept, **keep_deployment(current, fresh)}
+
+
+def keep_deployment(old: Any, fresh: dict) -> dict:
+    """``fresh``, kept a deployment. When ``old`` was one and ``fresh`` has no sub-jobs (an UNKNOWN
+    answer, say), ``fresh`` gets ``old``'s sub-jobs without their statuses, which are no longer known."""
+    if fresh.get("sub_jobs") or not is_deployment(old):
+        return fresh
+    return {**fresh, "sub_jobs": [{k: val for k, val in sj.items() if k != "status"} for sj in old["sub_jobs"]]}
 
 
 # field -> help text; the field names users type in the search box.
@@ -709,7 +791,8 @@ SEARCH_FIELDS = {
     "id": "job id",
     "status": "job status",
     "owner": "submitting user or owning role",
-    "type": "training / sampling",
+    "type": "training / sampling / deployment",
+    "class": "deployment class (EVALUATION)",
     "model": "model name",
     "method": "full / lora",
     "gpu": "GPU type (H200, B200, B300)",
@@ -745,6 +828,7 @@ _FIELD_ALIASES = {
     "alpha": "lora_alpha",
     "user": "owner",
     "job_type": "type",
+    "deployment_class": "class",
     "model_name": "model",
     "database": "db",
     "database_name": "db",
@@ -907,12 +991,15 @@ def field_values(job: dict, key: str, *, home: Optional[tuple] = None) -> list:
     if key == "id":
         return [job_id_of(job)] + [str(s.get("sub_job_id") or "") for s in subs]
     if key == "status":
-        return [status_word(job.get("status"))]
+        return list(dict.fromkeys([status_word(job.get("status")), status_word_for(job, job.get("status"))]))
     if key == "owner":
         return [str(v) for v in (job.get("submitted_by"), job.get("owner_role")) if v]
     if key == "type":
         # The short kind the list shows (log_prob) and the type as the API spells it (log_probability).
-        return list(dict.fromkeys([*job_types(job), *_raw_job_types(job)]))
+        kinds = [*(["deployment"] if is_deployment(job) else []), *job_types(job), *_raw_job_types(job)]
+        return list(dict.fromkeys(kinds))
+    if key == "class":
+        return [deployment_class(job)] if is_deployment(job) else []
     if key == "model":
         # The whole name, and the part after the organization that the Model column shows.
         return list(dict.fromkeys(name for model in job_models(job) for name in (model, short_model(model))))
@@ -942,16 +1029,6 @@ def field_values(job: dict, key: str, *, home: Optional[tuple] = None) -> list:
     return []
 
 
-def _as_float(v: Any) -> Optional[float]:
-    if isinstance(v, bool):
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return f if math.isfinite(f) else None
-
-
 def _compare(actual: Any, op: str, wanted: str) -> bool:
     a, w = _as_float(actual), _as_float(wanted)
     if a is not None and w is not None:
@@ -972,9 +1049,11 @@ def _compare(actual: Any, op: str, wanted: str) -> bool:
 
 
 def search_haystack(job: dict) -> str:
-    """Folded id, status, owner, GPU, job types, and models."""
+    """Folded id, status, owner, GPU, job types, and models; a deployment's status word and class too."""
     bits = [job_id_of(job), status_word(job.get("status")), owner(job),
             job.get("hardware") or "", job_type_label(job)]
+    if is_deployment(job):
+        bits += [status_word_for(job, job.get("status")), deployment_class(job)]
     bits += job_types(job) + _raw_job_types(job) + job_models(job)
     bits += [s.get("sub_job_id") or "" for s in sub_jobs(job)]  # ids copied from logs or --sub-job-id
     return fold(" ".join(str(b) for b in bits))
@@ -1151,21 +1230,25 @@ def narrowable_name(name: str) -> bool:
 
 
 def no_match_message(text: str, query: Query, searched: int, *, cut: str = "", older: Iterable[str] = (),
-                     location: str = "", widen: bool = False, narrow: bool = False, everything: int = 0) -> str:
-    """Explain an empty search, including truncated, old, or wider matches."""
+                     location: str = "", widen: bool = False, narrow: bool = False, everything: int = 0,
+                     elsewhere: str = "", noun: str = "job") -> str:
+    """Explain an empty search, including truncated, old, or wider matches; ``elsewhere`` says
+    where the other view's matches are, and ``noun`` what the view on screen lists."""
     older = list(older)
     if cut:
-        lines = [f"No jobs match “{text}” among the {searched:,} job(s) loaded: {cut}.",
+        lines = [f"No {noun}s match “{text}” among the {searched:,} {noun}(s) loaded: {cut}.",
                  "  Search covers only the loaded jobs."]
     else:
         where = f" in {location}" if location else ""
-        lines = [f"No jobs match “{text}” among {searched:,} job(s){where} in the last 6 months."]
+        lines = [f"No {noun}s match “{text}” among {searched:,} {noun}(s){where} in the last 6 months."]
     if everything:
         lines.append(f"  f searches all {everything:,} jobs of the schema.")
     if older:
         many = len(older) > 1
         lines.append(f"  {len(older):,} older job{'s' if many else ''} match{'' if many else 'es'} (the list hides "
                      f"jobs older than 6 months): cortex-training tui {older[0]} opens {'the newest' if many else 'it'}.")
+    if elsewhere:
+        lines.append(f"  {elsewhere}")
     if widen:
         lines.append("  a searches every database and schema.")
     if narrow:

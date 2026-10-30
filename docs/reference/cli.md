@@ -105,7 +105,8 @@ cortex-training list
 cortex-training list --status running
 cortex-training list --status active,failed --user JDOE --since 2026-10-01 --limit 20
 cortex-training list --all                    # Every schema you can see
-cortex-training get JOB_ID
+cortex-training get JOB_ID                    # Its config, which submit takes as it is
+cortex-training get JOB_ID --raw              # Its record: status, sub-job ids, times
 cortex-training wait JOB_ID                   # Wait until running, not finished
 cortex-training cancel JOB_ID
 cortex-training checkpoints JOB_ID
@@ -135,6 +136,7 @@ cortex-training --job JOB_ID load CHECKPOINT_ID
 cortex-training --job JOB_ID load CHECKPOINT_ID --source-job-id SOURCE_JOB_ID
 cortex-training --job JOB_ID load CHECKPOINT_ID --target-sub-job-id JOB_ID:training:0
 cortex-training --job JOB_ID load CHECKPOINT_ID --no-poll
+cortex-training download-checkpoint JOB_ID CHECKPOINT_ID --output-dir ./checkpoint
 ```
 
 ### [Logs And Metrics](#job-tui)
@@ -168,7 +170,7 @@ cortex-training model-deployment drop sf-ct-DEPLOYMENT_UUID
 
 ```bash
 cortex-training --compact list
-cortex-training get JOB_ID | jq '.sub_jobs'
+cortex-training get JOB_ID | jq '.sub_job_configs'
 cortex-training --help
 cortex-training fwd-bwd --help
 ```
@@ -178,7 +180,7 @@ cortex-training fwd-bwd --help
 | Command | Default behavior | Alternative |
 |---------|------------------|-------------|
 | `submit` | Return after submission | `--wait` waits until running; `--dry-run` validates without submitting |
-| `wait JOB_ID` | Wait until running, not until training finishes | Use `get JOB_ID` to inspect current status |
+| `wait JOB_ID` | Wait until running, not until training finishes | Use `get JOB_ID --raw` to inspect current status |
 | `fwd-bwd`, `generate` | Poll the submitted request until completion | Set top-level `"poll": false` in the input JSON |
 | `step` | Poll until completion; learning rate `1e-4` | Set `--lr`; polling cannot be disabled |
 | `load`, `weight-sync` | Poll the submitted request until completion | `--no-poll` returns without waiting for the result |
@@ -308,6 +310,7 @@ cortex-training list --status running
 cortex-training list --status active,failed --user JDOE --since 2026-10-01 --limit 20
 cortex-training list --all
 cortex-training get JOB_ID
+cortex-training get JOB_ID --raw
 cortex-training checkpoints JOB_ID
 cortex-training cancel JOB_ID
 cortex-training wait JOB_ID
@@ -333,9 +336,45 @@ with `account-level job listing is not enabled for this account`. A bad
 `--status`, `--since`, `--until`, or `--limit`, or an empty `--user`, exits
 with status 2 before connecting.
 
-`get` fetches current job details; `checkpoints` lists saved checkpoints.
-`wait` waits for the job to reach **running**, not for training to finish.
-See [Manage Jobs](../guides/operations/manage-jobs.md) for the operational workflow.
+`get` prints a job's config as a CreateJob body that `submit` takes as it is,
+to launch another job configured like it; `get --raw` prints the job's record
+as the service returns it, with its status, sub-job ids and times.
+`checkpoints` lists saved checkpoints. `wait` waits for the job to reach
+**running**, not for training to finish. See
+[Manage Jobs](../guides/operations/manage-jobs.md) for the operational workflow.
+
+```bash
+cortex-training get JOB_ID > job.json
+cortex-training submit job.json
+```
+
+The body has every field you can set on a job, each with the value the job runs
+with: its `hardware`, `comment`, `experiment_name`, `idle_timeout_seconds` and
+`pending_timeout_seconds`, and under `sub_job_configs` each sub-job's
+`job_type`, `model_name`, `dtype`, `seed`, `source_checkpoint_info` and
+training or inference config. Edit any of it before you submit. Whole numbers
+print as integers (`4`, not `4.0`). What the service sets is left out: the job
+and sub-job ids, statuses, times, submitter, owner and image (a new job runs the
+current image).
+
+- Each sub-job's config is its effective config, with the service's defaults
+  filled in, once the job is running on a service that reports one. Before
+  then, and on services that don't, it is the config as submitted, and a field
+  the job did not set (`dtype`, say) is `null`, the service's default.
+- A timeout the job did not set is the service's default: 1800 seconds idle,
+  86400 pending.
+- `experiment_name` is the job's experiment, so the new job joins it as a new
+  run; make it `null` for an experiment of its own. When the experiment can't
+  be read, `get` warns and prints `null`. A model deployment has `null`
+  `experiment_name` and `pending_timeout_seconds`: it cannot set them.
+- `comment`, `seed` and `source_checkpoint_info` are `null` when the job has
+  none.
+- `vllm_config.max_model_len` follows `max_seq_len`: change both together.
+- A sub-job started from external weights has
+  `source_checkpoint_info.external_stage_path` `null`: the job record does not
+  say which weights, so set it before you submit.
+- For a record without `hardware` (the service could not read the job's
+  details), `get` fails and prints nothing; `get --raw` still prints the record.
 
 ### List Available Models
 
@@ -533,7 +572,7 @@ session's training sub-job. Sampling sub-jobs are not valid targets.
 To find the training sub-job and its GPU count:
 
 ```bash
-cortex-training get JOB_ID | jq '.sub_jobs[] | select(.job_type=="training") | {sub_job_id, n_gpus: .training_config.n_gpus}'
+cortex-training get JOB_ID --raw | jq '.sub_jobs[] | select(.job_type=="training") | {sub_job_id, n_gpus: .training_config.n_gpus}'
 ```
 
 `get` takes the job id as a positional argument, so `--job-id` is not used here.
@@ -566,6 +605,45 @@ elsewhere, see [Start a Job From Your Own Weights](../guides/training/external-w
 
 `load` polls until the request completes by default. Pass `--no-poll` to return
 the request metadata without waiting for the result.
+
+### Download A Checkpoint
+
+Export a listed checkpoint and download its files locally:
+
+```bash
+cortex-training download-checkpoint JOB_ID CHECKPOINT_ID --output-dir ./checkpoint
+cortex-training download-checkpoint JOB_ID CHECKPOINT_ID --output-dir ./checkpoint \
+  --include '*.safetensors' --include 'config.json'
+```
+
+`--output-dir` is required. Export filenames retain their relative directory
+structure. `--include` is a repeatable, case-sensitive shell-style glob matched
+against the full relative filename; quote patterns to prevent shell expansion.
+Omit it to download every exported file. No matches produce an error.
+
+Downloads always show a byte-based progress bar on stderr, leaving stdout as
+machine-readable JSON. A terminal displays live updates; redirected stderr gets
+only the final progress line (or the last progress line before an error).
+The totals cover only files selected by `--include`, count completed files and
+resumed bytes as they are encountered, and show the number of completed files.
+
+Downloads resume automatically from sibling `.partial` files using HTTP Range
+requests. Rerun the same command after an interruption; no `--resume` flag is
+needed. Completed files whose byte size matches the export are skipped, and a
+file is promoted from `.partial` only after its expected byte size is verified.
+Existing final files with a different size and oversized partial files are
+refused; move them aside before retrying. Size checks are not checksum validation.
+Do not run concurrent downloads into the same output directory.
+
+The command verifies that the checkpoint is listed, validates the export and
+filenames, and refuses paths that escape the output directory. Each transfer
+uses a 30-second connection timeout and a 300-second read-inactivity timeout.
+Presigned HTTPS links are fetched without forwarding Snowflake credentials or
+following redirects. Links never appear in the JSON summary or transfer errors.
+
+The JSON summary contains `job_id`, `checkpoint_id`, `expires_at`, `output_dir`,
+and `files`. Each file has `filename`, `saved_path`, `size_bytes`, and a `status`
+of `downloaded`, `resumed`, or `existing`. The global `--compact` option applies.
 
 ### Start Sampling From A Training Checkpoint
 
@@ -854,8 +932,11 @@ still exits `0`.
 
 The `base_url` is an OpenAI-compatible endpoint. Authenticate with a Snowflake
 programmatic access token (PAT) and pass the deployment ID as `model`.
-Inference is not yet available on all accounts; until it is enabled for yours,
-requests return 404.
+Requests return 503 until the deployment is `READY` (and, retryably, while a
+`READY` deployment is busy or temporarily unavailable), and 404 for an
+unknown, failed, dropped, or not-owned deployment. Inference is not yet
+available on all accounts; until it is enabled for yours, requests return 403
+(see [REST API reference section 14.8](rest-api.md#148-calling-a-deployment)).
 
 ```python
 from openai import OpenAI
@@ -971,6 +1052,18 @@ account-level list scoped to that one schema
 so it comes a page at a time; where that route is unavailable for the account,
 fails, or answers with no job at all, it reads `list_jobs`, which answers in one
 call and shows no pages.
+
+The list has two views of the same jobs: **Jobs** (training and sampling, where
+`ct tui` opens) and **Deployments** (the jobs `ct` lists as model deployments; see
+[Model Deployments](#model-deployments)). `d` switches between them; the title
+starts with `deployments` while that view is on screen, and the info line says
+how many jobs the other one holds (`106 deployments · d shows them`). Search
+covers the view on screen; when it matches nothing there but something in the
+other view, it says so (`d shows the 3 matching deployments.`). A deployment's
+status reads as `ct` shows it (`READY`, `DROPPED`, ...); `status:` search takes
+either word (`status:ready` or `status:running`), and the status filter uses the
+job statuses (`running`, `cancelled`, ...).
+
 Press `a`, or click `a All schemas` in the footer, to list the jobs in every
 database and schema the role can see instead, from the same list unscoped;
 the footer then offers `a Current schema`, which goes back. The
@@ -1169,7 +1262,8 @@ location of their own. Quote text containing `:` (for example `"training:0"`).
 
 | Field | Meaning |
 |-------|---------|
-| `id`, `status`, `owner`, `type` | job id, status, user or role, `training`/`sampling`/`log_prob` |
+| `id`, `status`, `owner`, `type` | job id, status, user or role, `training`/`sampling`/`log_prob`/`deployment` |
+| `class` | a deployment's class (`EVALUATION`) |
 | `model`, `method`, `dtype` | model name (`=` takes it whole, `Qwen/Qwen3-8B`, or as the Model column shows it, `Qwen3-8B`), `full` or `lora`, dtype |
 | `gpu`, `gpus` | GPU type (`H200`, `B200`, `B300`), requested GPU count |
 | `optimizer`, `lr`, `batch`, `seq` | optimizer name, learning rate, train batch size, max sequence length |
@@ -1209,8 +1303,9 @@ operators shows under it only while it has focus.
 | `→` / `←` | Unfold the highlighted job's sub-jobs / fold them; on a sub-job row, `←` folds its job and moves to it. The job's row stays where it is on screen, and the list scrolls only as far as an unfolded job's sub-jobs need to show. Where there is nothing to unfold or fold, they scroll the columns sideways |
 | click `▸` / `▾` | Unfold or fold that job, as `→` / `←` do |
 | drag a `┃` bar | Make the column before it wider or narrower (the bars sit between the column names, and after the last; a blank cell beside a bar takes it too); a double-click on a bar gives its column back its own width |
-| `e` | Expand or collapse every job's sub-jobs, also those of jobs that later pages of the list being read bring (jobs a later refresh adds start as usual) |
+| `e` | Expand or collapse the sub-jobs of every job in the view on screen (Jobs or Deployments; each keeps its own choice), also those of jobs that later pages of the list being read bring (jobs a later refresh adds start as usual) |
 | `a` | All schemas / current schema: switch to the account-level list of every database and schema the role can see (the footer's `a All schemas`), or back to the configured one (`a Current schema`) |
+| `d` | Deployments / Jobs: show the deployments, or the training and sampling jobs again |
 | `f` | All jobs / newest 2,000: when the configured schema's list came whole (the account-level list is unavailable) and holds more than 2,000 jobs, the list shows the newest 2,000 and every active job, as the account-level list does, and search covers those (one that matches none of them says `f searches all N jobs of the schema.`); `f` shows every job of it (drawing tens of thousands takes a few seconds), and again the newest 2,000. Refreshes keep the choice until another list is shown |
 | `ctrl+c` | Copy what is highlighted, else every row in the list with a `Whole ID` column (see above for what each cell copies as); in the preview, the highlight, else the whole preview |
 | `r` | Refresh (the list also refreshes every 60 seconds while it is showing); while it shows the configured schema in place of the account-level list (`Current schema only: DB.SCHEMA (reason)`), `r` asks that list again once a minute has passed since the last ask |
@@ -1227,7 +1322,8 @@ for. `esc` closes that panel first, before it clears a search or goes back.
 Opening a job shows it as cards. The job card is headed by its id, its status
 as a colored pill (`unknown` reads `? UNKNOWN`), and how long it has been
 going (`12m 04s so far`, or `lasted 1h 20m` once it ended), with the keys for
-`l Logs` and `g Resources` under it. Its facts follow: model, type, owner,
+its tabs under it (`l Logs`, `g Resources`, `m Training metrics`,
+`c Checkpoints`). Its facts follow: model, type, owner,
 requested GPUs, creation and update times, and the location when it is not the
 configured one, in two columns from about 90 columns wide and in one below.
 Values stop after three rows; `e` expands every value and the complete sub-job
@@ -1258,20 +1354,25 @@ box unless the service sends a reason. The Sub-jobs card shows type, status
 screens omit Type, and wider tables scroll with `←` / `→` or `Home` / `End`;
 the card's bottom border says so (`e whole table`, `← → scroll`).
 
-The Config card under it follows the highlighted row: that sub-job's submitted
-config, exactly as `cortex-training get JOB_ID` prints that sub-job's entry
-(indented JSON by key, values as the service returns them, aliases as
-submitted), without the fields the service adds (`sub_job_id`, `status`). On
-the entire-job row, each sub-job's goes under its name, side by side when each
-has at least 40 cells. A line wider than its column is cut with `…` until `e`,
-which also puts the sub-jobs one under the other.
+The Config card under it follows the highlighted row. On the entire-job row it
+is the job's config exactly as `cortex-training get JOB_ID` prints it, a body
+that `submit` takes as it is (see [Manage existing jobs](#manage-existing-jobs));
+on a sub-job's row, the same body with that sub-job alone, so a copy of it
+launches just that one. Its `experiment_name` is read once when the preview
+opens; until then, or when it can't be read, it is `null` and the card's bottom
+border says so. A line wider than the card is cut with `…` until `e`.
 
 Live previews refresh every 60 seconds, on return from details, or on `r`; a
 dim line at the end of the job card reports reads, slow reads and refresh
 errors while keeping the last copy. `Enter` or a click opens the highlighted
 entire-job or sub-job scope on Logs (`⏎ opens its Logs` on the card's border).
-`l`, `g`, `m` and `c` open Logs, Resources, Training metrics and
-Checkpoints directly.
+For a training or sampling job, `l`, `g`, `m` and `c` open Logs, Resources,
+Training metrics and Checkpoints directly.
+A deployment's preview adds its class, replicas, idle timeout (`off` when it is
+never reclaimed, `server default` when the job sets none), the deployment ID to
+call it by (`Call as`, the same ID `ct` shows) and, unless it failed, is
+dropping or dropped, or was terminated, the base URL of deployments in the
+job's schema. Its keys are `v` Serving, `l` Logs and `g` Resources.
 
 #### Job details
 
@@ -1283,7 +1384,10 @@ location when it is not the configured one, then the service's `reason` and
 line does not fit on one row, the models are cut with `…`, then the id is left
 out (the header names it too). Switch tabs with `l` (Logs), `g`
 (Resources), `m` (Training metrics) and `c` (Checkpoints), or `t` for the
-next tab, round to Logs after the last.
+next tab, round to the first after the last.
+A deployment's tabs are Serving (`v`), Logs and Resources, with no `m` or `c`,
+so `t` goes round to Serving; a job opened by id shows the training tabs until
+its record says it is a deployment.
 
 - **Logs** is the live and historical log view described below. The pane shows
   one sub-job at a time, the one selected in the list beside it, so its lines
@@ -1298,10 +1402,13 @@ next tab, round to Logs after the last.
   background from its `Traceback (most recent call last):` to the exception
   that ends it (with any chained to it), and what the filter matches is marked
   in orange.
+  A serving drain's line (`drain_metrics`, every 30 seconds) ends with its numbers:
+  `16 req · p50 50ms · ttft p99 215ms · 2 replicas`, and `· N replica errors` when any.
 - **Resources** shows telemetry (`download_metrics`) for one sub-job at a
   time. `Space` (or a click on its name) shows the next one; `<` and `>` go
-  back and forth. Its two-line pinned header names the sub-job, position,
-  window, sample age and scrape interval while the stats and charts scroll.
+  back and forth. Its pinned header names the sub-job, position,
+  window, sample age and scrape interval while the stats and charts scroll: two
+  lines, and three on a deployment's GPU view (see below).
   - The focused left panel switches between `GPU Resources` and `System
     Resources`, then `ALL` (the mean) and each GPU or node. `↑`, `↓` or a click
     selects an entry. Each unit shows its latest utilization after a four-cell
@@ -1323,9 +1430,8 @@ next tab, round to Logs after the last.
     `temp` (and the hottest GPU) and `GPUs reporting` (`8/8`, against those
     requested); the System view has `CPU util`, `memory` and `nodes
     reporting`. Only metrics the rows have get a tile. Each is coloured by
-    health, and a value that warns or is an error has `!` or `×` at its
-    edge, so it shows without color too. For the mean a tile is as healthy as
-    its least healthy GPU or node: GPU util under 50% warns; GPU memory used from 95% warns; GPU
+    health, and for the mean a tile is as healthy as its least healthy GPU or
+    node: GPU util under 50% warns; GPU memory used from 95% warns; GPU
     temperature from 85 °C warns and from 90 °C is an error; CPU util from 95%
     warns; node memory used from 90% warns and from 97% is an error; power
     isn't judged. `GPUs reporting` warns below the GPUs requested and is an
@@ -1393,6 +1499,29 @@ next tab, round to Logs after the last.
     the job's screen logged in once its first log lines were drawn (see
     [Download sessions](rest-api.md#127-download-sessions)): the TUI keeps
     one open for its downloads while it runs, and closes it when it quits.
+  For a deployment the header adds that its GPU memory is reserved up front for
+  serving, so it reads near full all its life; KV cache use, on Serving, is the
+  memory signal.
+- **Serving** (deployments) reads the `drain_metrics` lines the deployment writes
+  to its console every 30 seconds, from its saved console (downloaded resumed, so a
+  refresh fetches only new chunks; about a minute behind live). The header says
+  `starting`, `starting (no metrics yet)`, `serving`, `status unknown`, `dropping`
+  or `ended` (`running` while a first read finds no drain yet), the replica
+  count, how long ago the last drain was (its time once the deployment is
+  dropping or ended), how long the deployment took to start, the download's
+  chunk count while it runs (the first open of a long-running deployment
+  fetches its whole console), and the download's warnings (skipped chunks,
+  say). The table has one row per drain,
+  newest first, for the newest 240 (about two hours; a note under it says when
+  it leaves older ones out): its time (`HH:MM:SS` in local time, with the date
+  first unless every row is today's), requests per second (`—` after a gap
+  over 45 s, where a drain was lost), requests, latency and time-to-first-token
+  p50/p99, queue p99, running and waiting requests, the
+  highest KV cache use, and replicas (with their errors, when any). While the
+  tab is shown it refreshes with the job, while the deployment is dropping, and
+  for ten minutes after it ends, while its last drains are uploaded. In that
+  time, or when the job's status changed since its last read, it also reads
+  again when you return to it. `r` refreshes it now.
 - **Training metrics** charts what the training sub-job's `/step` and
   `/fwd-bwd` calls returned, read from its own `training.jsonl`
   ([Training metrics download](rest-api.md#125-training-metrics-download)),
@@ -1415,8 +1544,9 @@ next tab, round to Logs after the last.
     `gradient_sample_numel`); per call, `rank` (the worker the result came
     from, currently always 0) while every call's is 0: a call from another
     worker shows it. The packing counts (`rl_model_calls`, `sft_model_calls`,
-    `sft_packed_rows`) always show. The header says how many are hidden
-    (`3 hidden (a)`), or `all metrics (a)` while they show.
+    `sft_packed_rows`) always show. The header says which show:
+    `training signals (a)`, or `all metrics (a)` once `a` shows them. A click
+    on it does what `a` does, and a click on the window beside it what `w` does.
   - The header names the sub-job, its newest step, how many calls were saved,
     the age of the newest row and the window, and with two or more
     training sub-jobs its place among them. `Space` shows the next one.
@@ -1653,8 +1783,8 @@ Keys in the job details view (`/`, `e`, `n`, `p`, `s`, `[` and `]` work on Logs;
 
 | Key | Action |
 |-----|--------|
-| `l` `g` `m` | Logs / Resources / Training metrics tab, as in the preview, except `l` on Logs (below) |
-| `t` | Next tab, round to Logs after the last |
+| `l` `g` `m` `v` | Logs / Resources / Training metrics / Serving tab, as in the preview, except `l` on Logs (below) |
+| `t` | Next of the job's tabs, round to the first after the last |
 | `a` | Show every metric, or hide again the ones that aren't training signals (Training metrics) |
 | `w` | Cycle the window; so does a click on the window in the header, and a click on a window in the selector at the bottom shows it (Resources); `w` also cycles all steps, the last 100 and the last 1,000 (Training metrics) |
 | `Space` | Next sub-job, round to the first after the last, when the job has two or more; the view stays, back to `ALL`. `<` / `>` go back / forward; a click on the sub-job's name in the header goes forward (Resources). On Training metrics, the next training sub-job |
@@ -1684,7 +1814,8 @@ polls per source, biasing toward server reliability over freshness.
 
 Each opened job is cached under `~/.cache/cortex-training/jobs/` (or
 `$XDG_CACHE_HOME/cortex-training/jobs/`, or `$CORTEX_TRAINING_TUI_CACHE_DIR/jobs/`):
-its log tail, finished console, and telemetry. To bound disk usage across long
+its log tail, finished console, and telemetry, and for a deployment the Serving
+tab's own copy of its console (`serving/`). To bound disk usage across long
 or repeated sessions, the cache holds at most 5 GiB. That limit covers the jobs
 and the local training metrics the client writes (`local-training/`) together,
 so the two are one budget rather than two that add up. Those rows count up to
@@ -1712,7 +1843,7 @@ and uncounted. A job cached by a TUI from before saved consoles moved to
 Jobs open in a running TUI or actively downloading (a `download-metrics` into a
 job's cache directory included) are never evicted. Opening a job creates its
 directory, with a `.last-used` timestamp and the lock files the TUI and its
-downloads take (`.lease`, `.cursors.lock`, `.console.lock`, `.metrics.lock`;
+downloads take (`.lease`, `.cursors.lock`, `.console.lock`, `.metrics.lock`, `.serving.lock`;
 `.cleanup.lock` and `.errors.lock` sit in the cache directory itself). An open
 job screen holds a shared lock on `.lease` (kept across `Ctrl+Z`, released by
 the OS on exit) and refreshes a `.leases/` marker every 5 minutes (valid for 30
@@ -1750,11 +1881,10 @@ server), and in tmux, whose outer terminal also needs
 `NO_COLOR` set to anything but an empty string ([no-color.org](https://no-color.org))
 draws every color as its gray, and the TUI says so as it starts. `--color always`
 draws color anyway, `--color never` draws gray in any terminal, and
-`--color auto` is the default. No screen depends on color alone: a job's status
-has its glyph, and a KPI tile that warns or is an error has `!` or `×` at its
-edge. Some command runners set `NO_COLOR` and `TERM=dumb` for the commands they
-run (an AI agent's, such as Cursor's): a TUI started there is gray until
-`--color always`.
+`--color auto` is the default. A job's status keeps its glyph in gray, but a
+KPI tile's health is shown by its color alone. Some command runners set
+`NO_COLOR` and `TERM=dumb` for the commands they run (an AI agent's, such as
+Cursor's): a TUI started there is gray until `--color always`.
 
 Each glyph the TUI draws is one cell wide, and none is also an emoji (which some
 terminals draw in color, two cells wide). Borders, tables and charts line up
@@ -1776,7 +1906,7 @@ Use the global `--compact` flag for compact JSON, or pipe output to `jq`:
 
 ```bash
 cortex-training --compact list
-cortex-training get JOB_ID | jq '.sub_jobs'
+cortex-training get JOB_ID | jq '.sub_job_configs'
 ```
 
 Use `cortex-training --help` to list commands and global flags, or

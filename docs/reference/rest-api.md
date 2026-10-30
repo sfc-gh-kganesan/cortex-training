@@ -482,6 +482,55 @@ The response shape consumed by this repository is flat at each sub-job:
 }
 ```
 
+Each `sub_jobs[]` entry is the sub-job's config plus the `sub_job_id` and
+`status` the service adds. On service versions that report it, once the job is
+running the config is the sub-job's **effective** config: `job_type`,
+`model_name`, `dtype`, `seed` (`null` when unset), any `source_checkpoint_info`,
+and the `training_config` or `inference_config` the job runs with, the service's
+defaults filled in (`null` for an optional field left unset). A key the service
+did not use, such as a misspelled one, is not in it. Before the job runs, on
+services that don't report it, and for model deployments, the entry is the
+config as submitted, and its whole numbers may come back as floats
+(`"n_gpus": 4.0`).
+
+The record also has `hardware` (the default when none was set), `comment`
+(`null` when none was set), and `idle_timeout_seconds` /
+`pending_timeout_seconds` when they were set (see
+[section 5.1](#51-create-job---post-)). It does not name the job's experiment;
+see [section 5.7](#57-experiment-run---get-job_idexperiment-run).
+
+#### Launching a job like another
+
+`create_job_body_from_job(job, experiment_name=...)` turns a Get job record
+into a CreateJob body for a job configured like it, which
+`create_job_from_body()` takes as it is:
+
+```python
+from cortex_training import create_job_body_from_job
+
+name = client.get_experiment_run(job_id)["experiment_name"]
+body = create_job_body_from_job(client.get_job(job_id), experiment_name=name)
+new_job_id = client.create_job_from_body(body)["job_id"]
+```
+
+The body has `hardware`, `comment`, `experiment_name`, `idle_timeout_seconds`,
+`pending_timeout_seconds` and `sub_job_configs`, each with the value the job
+runs with, and each sub-job has the record's fields plus `dtype`, `seed` and
+`source_checkpoint_info`. A timeout the record lacks is the service's default
+from [section 5.1](#51-create-job---post-) (1800 and 86400 seconds); a
+`comment`, `dtype`, `seed` or `source_checkpoint_info` it lacks is `null`, as is
+`experiment_name` when none is given. Given the job's own, the new job joins
+that experiment as a new run. A model deployment, which can set neither, keeps
+`pending_timeout_seconds` and `experiment_name` `null`. Left out are `job_id`
+(the service rejects one on create), `sub_job_id`, `status`, `reason`, the
+times, `submitted_by`, `owner_role` and `image_tag` (a new job runs the current
+image). A sub-job started from external weights has
+`source_checkpoint_info: {"external_stage_path": null}` to fill in, as the record
+does not say which weights. Whole-number floats become integers. It raises
+`ValueError` for a record with no sub-jobs or no `hardware` (the service could
+not read the job). `cortex-training get JOB_ID` prints the same body, with the
+job's experiment; `get --raw` prints the record.
+
 `wait_for_job()` repeatedly calls this endpoint until `running`.
 
 `state_changed_at` (UTC time the job entered its current `status`) is optional
@@ -848,6 +897,16 @@ No body.
 ```
 
 The URLs are short-lived.
+
+The CLI command `cortex-training download-checkpoint JOB_ID CHECKPOINT_ID` with
+`--output-dir DIRECTORY` lists checkpoints, calls this export endpoint, and
+downloads the returned HTTPS links. It accepts repeated `--include` filename
+globs and automatically resumes `.partial` files using HTTP Range requests.
+The CLI always displays byte and file progress on stderr without
+changing the JSON summary on stdout.
+The server-provided `size_bytes` must be a non-negative integer or decimal
+string; the CLI verifies the downloaded size before promoting a file. See
+[Download a checkpoint](cli.md#download-a-checkpoint) for flags and output.
 
 ### 5.10 Delete checkpoint
 
@@ -3430,6 +3489,12 @@ server already knows the source job's model and rejects one that does not
 match it, so `create` reads the training sub-job's `model_name` from
 `GET /{source job_id}` and sends that. `model` is rejected as an unknown key.
 
+The checkpoint can come from a full fine-tune or a LoRA training job. For a
+LoRA checkpoint, the server copies the source training sub-job's
+`training_config.peft_config` into the deployment, so it serves the base model
+with the trained adapter. The spec has no LoRA settings, and `peft_config`
+cannot be set on a deployment.
+
 Client-side checks (all others are left to the server):
 
 | Field | Rule |
@@ -3593,9 +3658,11 @@ raised unchanged.
 ### 14.8 Calling a deployment
 
 `CortexTrainingClient` does not call the deployment itself; any
-OpenAI-compatible client does. This is the behavior a caller sees, as checked
-by the `test_tc6_*` cases in `tests/test_model_deployment_e2e.py`. The
-streaming example (`recipes/model_deployment/streaming.py`) codes against it.
+OpenAI-compatible client does. This is the behavior a caller sees. The
+`test_tc6_*` cases in `tests/test_model_deployment_e2e.py` check the path,
+auth, `model`, and length-limit rows against a `READY` deployment; the error
+rows are not exercised by a live test. The streaming example
+(`recipes/model_deployment/streaming.py`) codes against it.
 
 | Item | Behavior |
 |---|---|
@@ -3603,7 +3670,11 @@ streaming example (`recipes/model_deployment/streaming.py`) codes against it.
 | Auth | `Authorization: Bearer <PAT>` and `X-Snowflake-Authorization-Token-Type: PROGRAMMATIC_ACCESS_TOKEN` |
 | `model` | The deployment ID, `sf-ct-<UUID>`; responses echo it as `model` |
 | Length limit | `max_completion_tokens`. `max_tokens` is rejected with HTTP 400, `{"error": {"type": "invalid_request_error", "param": "max_tokens", "code": "unsupported_parameter"}}` |
-| Not enabled | HTTP 404 while inference is not enabled for the account |
+| Not ready | HTTP 503 `endpoint_failed` while the deployment is `PENDING` or `INITIALIZING`, and possibly briefly after it is dropped. Check its status with `get_model_deployment` |
+| Unavailable | HTTP 503 on a `READY` deployment: `endpoint_failed` when it is temporarily unavailable, or `frontend_overloaded` when the service is busy. Retry shortly |
+| Not found | HTTP 404 `model_not_found` for an unknown or malformed ID, a deployment that has failed or been dropped, or one the caller does not own or that lives in another schema. The last two are deliberate, so a caller cannot tell whether someone else's deployment exists |
+| Not permitted | HTTP 403 `feature_disabled` when Cortex Training or model deployments are not enabled for the account, or its trial has expired or has no expiration configured; the message says which. HTTP 403 `deployment_class_not_served` when the deployment exists but this endpoint does not serve its class |
+| Routes off | HTTP 405 with an empty body when the inference routes are turned off for the account, or for a wrong HTTP method |
 
 Without `stream`, the response is one `chat.completion` object with
 `choices[0].message.content`, `finish_reason`, and `usage`.

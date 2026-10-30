@@ -256,7 +256,9 @@ async def _run_resource_tab(tmp_path):
         assert ok
         tabs = app.screen.query_one("#job-tabs", TabbedContent)
         assert tabs.active == "logs"
-        assert {pane.id for pane in app.screen.query("TabPane")} == {"logs", "resource", "training", "checkpoints"}
+        # Serving is composed for every job, hidden for a training one.
+        panes = {pane.id for pane in app.screen.query("TabPane")}
+        assert panes == {"serving", "logs", "resource", "training", "checkpoints"}
         c.download_metrics.assert_not_called()
 
         tabs.active = "resource"
@@ -271,6 +273,7 @@ async def _run_resource_tab(tmp_path):
         status = str(app.screen.query_one("#resource-status", Static).render())
         assert "2 reporting" in status
         assert "training #0" in status  # named by type and index
+        assert "reserved" not in status  # the memory note is a deployment's
         calls = c.download_metrics.call_count
 
         # w cycles the GPU window; the digits do nothing on the job detail screen.
@@ -358,6 +361,32 @@ async def _run_resource_tab(tmp_path):
 def test_resource_tab_is_lazy_and_renders_multiple_gpus(tmp_path, monkeypatch):
     monkeypatch.setenv("CORTEX_TRAINING_TUI_CACHE_DIR", str(tmp_path))
     asyncio.run(_run_resource_tab(tmp_path))
+
+
+def test_a_deployment_s_resources_say_its_memory_is_reserved(tmp_path):
+    c = _client()
+    c.get_job.return_value = {"job_id": "7", "status": "RUNNING", "sub_jobs": [
+        {"sub_job_id": "7:sampling:0", "job_type": "sampling", "status": "RUNNING",
+         "inference_config": {"deployment_class": "EVALUATION", "num_replicas": 1.0}}]}
+
+    def download(job_id, output_dir, **_kwargs):
+        _write_gpu_metrics(output_dir, "7:sampling:0", gpu_count=1)
+        return []
+
+    c.download_metrics.side_effect = download
+
+    async def run():
+        app = CortexTrainingLogTUI(c, "7", poll_interval=0.01)
+        async with app.run_test(size=(130, 36)) as pilot:
+            assert await _wait(pilot, app, lambda: isinstance(app.screen, LogScreen)
+                               and app.screen._current_source == "7:sampling:0")
+            await pilot.press("g")
+            assert await _wait(pilot, app, lambda: "reserved up front" in
+                               str(app.screen.query_one("#resource-status", Static).render()), tries=300)
+            app.workers.cancel_all()
+            await pilot.pause()
+
+    asyncio.run(run())
 
 
 async def _run_resource_cold_cache_failure():
@@ -456,6 +485,39 @@ async def _run_resource_partial_download_failure():
 def test_resource_partial_download_is_reparsed_after_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("CORTEX_TRAINING_TUI_CACHE_DIR", str(tmp_path))
     asyncio.run(_run_resource_partial_download_failure())
+
+
+async def _run_resource_narrow_header_keeps_the_scrape_interval_last():
+    c = _client()
+
+    def download(job_id, output_dir, *, resume, **_kwargs):
+        _write_gpu_metrics(output_dir, "7:training:0", gpu_count=1)
+        return []
+
+    c.download_metrics.side_effect = download
+    app = CortexTrainingLogTUI(c, "7", poll_interval=0.01)
+    async with app.run_test(size=(130, 36)) as pilot:
+        ok = await _wait(pilot, app, lambda: app.screen._current_source is not None)
+        assert ok
+        app.screen.query_one("#job-tabs", TabbedContent).active = "resource"
+        ok = await _wait(pilot, app, lambda: not app.screen._resource_loading and "scraped every 5 s" in str(
+            app.screen.query_one("#resource-status", Static).render()))
+        assert ok
+        seen = []
+        for width in range(130, 40, -2):
+            await pilot.resize_terminal(width, 36)
+            await pilot.pause()
+            second = str(app.screen.query_one("#resource-status", Static).render()).split("\n")[1]
+            # The interval, and the freshness clock ("newest 30 s ago (12:34:56)").
+            seen.append(("scraped every 5 s" in second, "(" in second))
+        # Narrower, the clock goes first, then the interval: never the interval while the clock shows.
+        assert (True, True) in seen and (True, False) in seen and (False, True) not in seen, seen
+        await _settle(app, pilot)
+
+
+def test_a_narrow_resource_header_drops_the_clock_before_the_scrape_interval(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORTEX_TRAINING_TUI_CACHE_DIR", str(tmp_path))
+    asyncio.run(_run_resource_narrow_header_keeps_the_scrape_interval_last())
 
 
 async def _run_resource_partial_other_sub_job_retries():
@@ -4694,7 +4756,7 @@ async def _run_e_holds_for_its_list_and_jobs_a_refresh_adds_start_as_usual(fold)
         assert all(screen._is_expanded(job) is not fold for job in listed)  # e's choice holds for them
         by_id = {views.job_id_of(job): job for job in screen._all_jobs}
         assert screen._is_expanded(by_id["new-live-job"]) and not screen._is_expanded(by_id["new-ended-job"])
-        assert screen._all_folded is None
+        assert screen._all_folded == {False: None, True: None}
         await _settle(app, pilot)
 
 

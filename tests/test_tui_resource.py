@@ -729,18 +729,6 @@ def test_kpi_strip_fills_its_width_and_drops_details_before_wrapping():
     assert edge == ("▎ ", f"{resource_module.HEALTH_COLORS['ok']} on {resource_module.SURFACE}")
 
 
-def test_a_tile_that_warns_or_errs_says_so_in_shape_as_well_as_color():
-    # Without color (NO_COLOR, or the strip copied as text) a warning and an error still show.
-    tiles = [resource_module.Kpi("GPU util", "40%", "", "warn"), resource_module.Kpi("temp", "91 °C", "", "err"),
-             resource_module.Kpi("power", "632 W"), resource_module.Kpi("memory", "50%", "", "ok")]
-    top, bottom = (_text(line) for line in resource_module.kpi_strip_spans(tiles, 80, styled=False))
-    assert top.count("▎") == 4  # the labels keep the bar
-    assert "! 40%" in bottom and "× 91 °C" in bottom and "▎ 632 W" in bottom and "▎ 50%" in bottom
-    marks = [span for span in resource_module.kpi_strip_spans(tiles, 80)[1] if span[0] in ("! ", "× ")]
-    assert [style.split()[0] for _text_, style in marks] == [resource_module.HEALTH_COLORS["warn"],
-                                                              resource_module.HEALTH_COLORS["err"]]
-
-
 def test_stats_table_heads_line_up_with_their_columns(tmp_path):
     resource = _gpu_resource(tmp_path, [90.0, 30.0], [60.0, 88.0])
     view, whole = resource.view("10m"), resource.view("all")

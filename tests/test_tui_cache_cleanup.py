@@ -480,10 +480,11 @@ def test_a_job_open_in_a_running_tui_is_never_removed(tmp_path):
     assert open_job.exists()
 
 
-def test_a_job_being_downloaded_is_never_removed(tmp_path):
+@pytest.mark.parametrize("part", ["metrics", "serving"])
+def test_a_job_being_downloaded_is_never_removed(tmp_path, part):
     busy = _job(tmp_path, "busy", mib=3, age=5000)
     newer = _job(tmp_path, "newer", mib=3, age=1000)
-    lock = DownloadLock(busy / "metrics")
+    lock = DownloadLock(busy / part)
     assert lock.try_acquire()
     try:
         # 6 MiB over a 4 MiB limit: busy is skipped because of its download lock, so newer goes.
@@ -858,3 +859,10 @@ def test_a_cancelled_tail_persists_neither_an_empty_page_nor_a_missing_head(tmp_
     assert pages == []
     assert cache.get_cursor("window") is None and cache.load_entries("window") == []
     assert not cache.head_missing("window")
+
+
+def test_a_deployment_s_serving_folder_is_the_cache_s(tmp_path):
+    job = _job(tmp_path, "deploy", mib=3, age=5000)
+    (job / "serving" / "s").mkdir(parents=True)
+    (job / "serving" / "s" / "stdout.log").write_bytes(b"x" * MIB)
+    assert _names(cache_cleanup.enforce_cache_limit(tmp_path, limit=1 * MIB)) == ["deploy"]

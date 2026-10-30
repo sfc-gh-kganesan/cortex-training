@@ -7,11 +7,15 @@ cortex-training list
 cortex-training list --status running
 cortex-training list --status active,failed --user JDOE --since 2026-10-01
 cortex-training list --all --limit 20         # Every schema you can see
-cortex-training get JOB_ID
+cortex-training get JOB_ID > job.json         # A body submit takes as it is
+cortex-training get JOB_ID --raw              # Its status and sub-job ids
 cortex-training checkpoints JOB_ID
 cortex-training wait JOB_ID
 cortex-training cancel JOB_ID
 ```
+
+`get` prints a job's config as a body for `submit`, to launch another job
+configured like it; see [Manage existing jobs](../../reference/cli.md#manage-existing-jobs).
 
 Use `cortex-training capacity` before starting an example, and
 `cortex-training capacity --hardware B200` (or `B300`) when you want a single

@@ -46,6 +46,7 @@ from cortex_training.client.core import SubJobConfig
 from cortex_training.client.core import TrainingConfig
 from cortex_training.client.core import build_forward_backward_kwargs
 from cortex_training.client.core import build_forward_backward_payload
+from cortex_training.client.core import create_job_body_from_job
 from cortex_training.client.core import serialize_forward_backward_args
 
 __all__ = [
@@ -74,5 +75,6 @@ __all__ = [
     "TrainingConfig",
     "build_forward_backward_kwargs",
     "build_forward_backward_payload",
+    "create_job_body_from_job",
     "serialize_forward_backward_args",
 ]

@@ -48,7 +48,7 @@ EXAMPLES = {
     # The only LoRA run on a hybrid-attention model: the others are dense plain-attention
     # or sequence-parallel MoE. 8 data-parallel GPUs, so the server needs batch 8.
     "sft_lora_qwen35": (
-        "examples.sft.conversational.train",
+        "recipes.sft_quickstart.conversational.train",
         ["model=Qwen/Qwen3.5-9B", "lora=true", "max_steps=2", "max_seq_len=1024",
          "train_batch_size=8", "log_path={log_path}"],
     ),
@@ -86,6 +86,19 @@ EXAMPLES = {
         "recipes.sft_quickstart.dare.evaluate",
         ["bench_dir={bench_dir}", "sandbox_python={sandbox_python}", "versions=v1",
          f"task_types={DARE_TASK_TYPE}", "max_examples=2", "log_path={log_path}"],
+    ),
+    # Sixteen UltraChat conversations answered again by the target, then split.
+    "dflash2_data": (
+        "recipes.dflash2.generate_data",
+        ["out_dir={log_path}", "num_conversations=16", "heldout=4"],
+    ),
+    # Two steps of draft training on the bundled sample, then the draft served with its
+    # target and its acceptance length measured on eight of the same prompts.
+    "dflash2": (
+        "recipes.dflash2.train",
+        ["data_path=recipes/dflash2/data/sample.jsonl", "max_steps=2", "train_batch_size=8",
+         "eval_prompts=recipes/dflash2/data/sample.jsonl", "eval_num_prompts=8", "eval_max_tokens=128",
+         "log_path={log_path}"],
     ),
     # Heaviest case (MoE, long context, ~16 GPUs), so it runs last.
     "rl_moe": (
