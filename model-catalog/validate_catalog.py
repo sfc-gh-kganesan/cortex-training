@@ -66,16 +66,16 @@ class CatalogValidationError(ValueError):
 
 
 def examples_utils():
-    """Import the repository's examples.utils, never another ``examples`` package."""
+    """Import the repository's recipes.utils, never another ``recipes`` package."""
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
-    import examples
-    from examples import utils
+    import recipes
+    from recipes import utils
 
-    location = Path(examples.__file__).resolve().parent
-    if location != REPO_ROOT / "examples":
+    location = Path(recipes.__file__).resolve().parent
+    if location != REPO_ROOT / "recipes":
         raise ImportError(
-            f"`examples` resolves to {location}, not this repository's examples/; "
+            f"`recipes` resolves to {location}, not this repository's recipes/; "
             f"put {REPO_ROOT} first on sys.path"
         )
     return utils
@@ -442,7 +442,7 @@ def _distillation_errors(catalog_dir: Path) -> tuple[list[str], int]:
     missing = [model_id for model_id in (student, teacher) if not (catalog_dir / utils.model_slug(model_id)).is_dir()]
     if missing:
         return [f"{label}: default distillation model(s) missing from the catalog: {', '.join(missing)}"], 0
-    overrides_path = REPO_ROOT / "examples" / "distillation" / "overrides.json"
+    overrides_path = REPO_ROOT / "recipes" / "distillation" / "overrides.json"
     if not overrides_path.is_file():
         return [f"{label}: the example's shipped overrides.json is missing at {overrides_path}"], 0
     try:

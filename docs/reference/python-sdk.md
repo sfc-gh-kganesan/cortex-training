@@ -293,7 +293,7 @@ The SDK does not size `router_replay.max_cache_bytes`: set it on each sub-job's
 repository's RL example fills in 5 GiB (training) and 20 GiB (sampling) for MoE
 models, and describes an optional planner that sizes a cap from the model's
 geometry; see
-[Router-replay capacity planning](../../examples/rl/README.md#router-replay-capacity-planning).
+[Router-replay capacity planning](../../recipes/rl_quickstart/README.md#router-replay-capacity-planning).
 
 ## Checkpoints
 

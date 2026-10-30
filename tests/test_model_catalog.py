@@ -317,7 +317,7 @@ def test_inference_job_args_picks_the_models_own_standard_tier():
     # Tiers are per model, not a fixed 32,768 cutoff. Qwen3-4B-Instruct's standard
     # inference window is 65,536, so a 65,536 checkpoint must resolve to that model's
     # standard inference file, not its 262,144-token long one.
-    from examples.utils import inference_job_args
+    from recipes.utils import inference_job_args
 
     body = {
         "hardware": "H200",
@@ -522,7 +522,7 @@ def _yaml_models(path: Path) -> dict[str, dict]:
 
 def _renderer_resolves(model_id: str) -> bool:
     """Whether the examples' renderer picker resolves for ``model_id`` at the default thinking mode."""
-    from examples.utils import recommended_renderer_name
+    from recipes.utils import recommended_renderer_name
 
     try:
         recommended_renderer_name(model_id, enable_thinking=False)
@@ -590,7 +590,7 @@ def test_docs_example_lists_are_gated_by_renderer_resolution():
 def test_docs_examples_name_example_metadata_ids():
     ids = {
         line.removeprefix("id: ").strip()
-        for path in (REPO_ROOT / "examples").rglob("example.yaml")
+        for path in (REPO_ROOT / "recipes").rglob("example.yaml")
         for line in path.read_text().splitlines()
         if line.startswith("id: ")
     }

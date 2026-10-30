@@ -12,13 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from examples.utils import make_config
+from recipes.utils import make_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOKS = {
-    "inference": REPO_ROOT / "examples/inference/inference_walkthrough.ipynb",
-    "sft": REPO_ROOT / "examples/sft/conversational/qwen3_8b_sft_training.ipynb",
-    "multiplex": REPO_ROOT / "examples/sft/conversational/qwen3_8b_sft_training_multiplex.ipynb",
+    "inference": REPO_ROOT / "recipes/inference/inference_walkthrough.ipynb",
+    "sft": REPO_ROOT / "recipes/sft_quickstart/conversational/qwen3_8b_sft_training.ipynb",
+    "multiplex": REPO_ROOT / "recipes/sft_quickstart/conversational/qwen3_8b_sft_training_multiplex.ipynb",
 }
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
 
@@ -34,7 +34,7 @@ def _source(cell: dict) -> str:
 def _guard(name: str) -> str:
     """The first cell up to the make_config import: the part that runs offline."""
     source = _source(_notebook(name)["cells"][0])
-    end = source.index("from examples.utils import make_config")
+    end = source.index("from recipes.utils import make_config")
     return source[: source.index("\n", end) + 1]
 
 
@@ -64,13 +64,13 @@ def test_the_first_cell_puts_the_repository_first_on_sys_path(name, monkeypatch)
 
 @pytest.mark.parametrize("name", NOTEBOOKS)
 def test_the_first_cell_fails_clearly_when_examples_resolves_elsewhere(name, monkeypatch, tmp_path):
-    shadow = types.ModuleType("examples")
-    shadow.__file__ = str(tmp_path / "site-packages" / "examples" / "__init__.py")
-    monkeypatch.setitem(sys.modules, "examples", shadow)
+    shadow = types.ModuleType("recipes")
+    shadow.__file__ = str(tmp_path / "site-packages" / "recipes" / "__init__.py")
+    monkeypatch.setitem(sys.modules, "recipes", shadow)
     monkeypatch.setattr(sys, "path", list(sys.path))
     monkeypatch.chdir(NOTEBOOKS[name].parent)
 
-    with pytest.raises(RuntimeError, match="`examples` resolves to .*site-packages.*, outside .*Another package named"):
+    with pytest.raises(RuntimeError, match="`recipes` resolves to .*site-packages.*, outside .*Another package named"):
         exec(compile(_guard(name), str(NOTEBOOKS[name]), "exec"), {})
 
 
@@ -172,7 +172,7 @@ def test_every_notebook_import_resolves(name, monkeypatch):
     monkeypatch.setattr(sys, "path", [str(REPO_ROOT), *sys.path])
     modules = set().union(*(_imported_modules(_source(cell)) for cell in _notebook(name)["cells"]))
 
-    assert "examples.utils" in modules
+    assert "recipes.utils" in modules
     assert {module for module in modules if importlib.util.find_spec(module) is None} == set()
 
 

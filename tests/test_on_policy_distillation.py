@@ -13,14 +13,14 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from examples.distillation import teacher as teacher_mod
-from examples.distillation import train as runner
-from examples.distillation.tasks.gsm8k import extract_answer
-from examples.distillation.tasks.gsm8k import is_correct
-from examples.distillation.tasks.gsm8k import parse_gold
-from examples.utils import _forward_backward_payload
-from examples.utils import collate
-from examples.utils import sequence_from_rollout
+from recipes.distillation import teacher as teacher_mod
+from recipes.distillation import train as runner
+from recipes.distillation.tasks.gsm8k import extract_answer
+from recipes.distillation.tasks.gsm8k import is_correct
+from recipes.distillation.tasks.gsm8k import parse_gold
+from recipes.utils import _forward_backward_payload
+from recipes.utils import collate
+from recipes.utils import sequence_from_rollout
 
 from cortex_training import wire
 
@@ -304,7 +304,7 @@ def test_job_bodies_build_from_the_catalog_with_the_small_footprint():
     sampling = next(s for s in student["sub_job_configs"] if s["job_type"] == "sampling")["inference_config"]
     teacher_cfg = teacher["sub_job_configs"][0]["inference_config"]
 
-    # The sizing flags and examples/distillation/overrides.json give a small job.
+    # The sizing flags and recipes/distillation/overrides.json give a small job.
     assert training["max_seq_len"] == 2048 and sampling["max_seq_len"] == 2048
     assert training["n_gpus"] == 1 and sampling["n_gpus"] == 1
     assert training["mb_spec"]["max_tokens_per_mb"] == 10240
@@ -768,7 +768,7 @@ def test_clipped_fraction_counts_tokens_outside_the_clip():
 
 def test_entrypoint_runs_the_gsm8k_task(monkeypatch):
     pytest.importorskip("chz")
-    from examples.distillation.on_policy import train as entry
+    from recipes.distillation.on_policy import train as entry
 
     captured = {}
     monkeypatch.setattr(

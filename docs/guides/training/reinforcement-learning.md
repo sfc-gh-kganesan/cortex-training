@@ -1,6 +1,6 @@
 # Reinforcement Learning
 
-The [Math GRPO example](../../../examples/rl/README.md) is the current
+The [Math GRPO example](../../../recipes/rl_quickstart/README.md) is the current
 end-to-end RL example. It demonstrates:
 
 - Colocated training and sampling sub-jobs
@@ -11,13 +11,13 @@ end-to-end RL example. It demonstrates:
 
 ## Integrated RL frameworks
 
-[SkyRL](../../../examples/frameworks/skyrl/gsm8k_grpo/README.md) can also run GRPO against Cortex Training,
+[SkyRL](../../../recipes/skyrl/gsm8k_grpo/README.md) can also run GRPO against Cortex Training,
 with its trainer on a CPU driver and training and sampling in Cortex sub-jobs.
 Its GSM8K example lives in the Arctic Platform repository and has its own
 install.
 
 To train a model inside an agent you already have, see
-[Bring your own agent](../../../examples/frameworks/bring-your-own-agent.md). The agent
+[Bring your own agent](../../../recipes/bring-your-own-agent.md). The agent
 keeps its own loop and sends model calls to a per-rollout endpoint; SkyRL and
-Cortex do the training. [OpenHands](../../../examples/frameworks/openhands.md) is the
+Cortex do the training. [OpenHands](../../../recipes/openhands/README.md) is the
 worked example.

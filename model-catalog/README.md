@@ -1,9 +1,9 @@
 # Cortex Training Model Catalog
 
 The supported models, and a tuned job file for each model, context, GPU type and
-mode. The examples and `python -m examples.utils` build their jobs from these
+mode. The examples and `python -m recipes.utils` build their jobs from these
 files unless you pass your own job file; see
-[How an example builds its job](../examples/README.md#how-an-example-builds-its-job).
+[How an example builds its job](../recipes/README.md#how-an-example-builds-its-job).
 
 ## Layout
 

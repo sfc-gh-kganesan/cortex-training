@@ -2148,7 +2148,7 @@ class TestCreateJob:
         assert training_config["optimizer"] == {"type": "adamw"}
 
     def test_the_api_readme_says_create_job_from_body_rewrites_peft_config_in_place(self):
-        readme = (Path(__file__).resolve().parents[1] / "examples" / "api" / "README.md").read_text()
+        readme = (Path(__file__).resolve().parents[1] / "recipes" / "api_quickstart" / "README.md").read_text()
         text = " ".join(readme.split())
         claim = text[text.index("`create_job_from_body` checks the body") :]
         claim = claim[: claim.index(" See ")]

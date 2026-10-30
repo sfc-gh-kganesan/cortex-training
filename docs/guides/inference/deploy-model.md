@@ -7,7 +7,7 @@ managed with `cortex-training model-deployment`, and you call them with any
 OpenAI-compatible client, `requests`, or `curl`.
 
 For a runnable version of this page, see the
-[model deployment example](../../../examples/model_deployment/README.md). To
+[model deployment example](../../../recipes/model_deployment/README.md). To
 generate through the Cortex Training generate API instead, see
 [Serve a Training Checkpoint](serve-checkpoint.md).
 

@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from examples import utils
-from examples.utils import make_config
-from examples.utils import make_distillation_config
-from examples.utils import merge_job_config
+from recipes import utils
+from recipes.utils import make_config
+from recipes.utils import make_distillation_config
+from recipes.utils import merge_job_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG = REPO_ROOT / "model-catalog" / "models"
@@ -760,7 +760,7 @@ def test_the_command_line_rejects_mixed_forms(argv, capsys):
 def test_the_module_runs_from_the_command_line(tmp_path):
     out = tmp_path / "job.json"
     result = subprocess.run(
-        [sys.executable, "-m", "examples.utils", "--model", "Qwen/Qwen3-8B", "--context", "standard", "--rl", "-o", str(out)],
+        [sys.executable, "-m", "recipes.utils", "--model", "Qwen/Qwen3-8B", "--context", "standard", "--rl", "-o", str(out)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

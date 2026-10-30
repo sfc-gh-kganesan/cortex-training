@@ -17,7 +17,7 @@ Then set a project on the train command, and optionally `wandb_name` to name
 the run:
 
 ```bash
-python -m examples.sft.conversational.train \
+python -m recipes.sft_quickstart.conversational.train \
   config=/path/to/config.json wandb_project=cortex-training
 ```
 

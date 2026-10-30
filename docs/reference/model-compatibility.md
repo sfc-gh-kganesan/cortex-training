@@ -36,10 +36,10 @@ so the boundary differs between models. Most trainable models have LoRA and full
 files; some have only one, and inference-only models have full-weight files. The
 model's catalog folder lists exactly which files it has. The examples pick a file with
 `model=`, `context=`, `hardware=` and `lora=` (see
-[Run an example](../../examples/README.md#run-an-example)).
+[Run an example](../../recipes/README.md#run-an-example)).
 
 The examples that tokenize prompts pick a chat renderer from tinker-cookbook
-(`examples.inference.serve` needs none):
+(`recipes.inference.serve` needs none):
 
 - Conversational SFT and the inference `generate`/`evaluate` commands default
   to thinking off, and accept `enable_thinking=` and `renderer_name=`. DARE

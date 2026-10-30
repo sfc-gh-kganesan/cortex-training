@@ -13,22 +13,22 @@ from pathlib import PurePosixPath
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = REPO_ROOT / "examples"
-RL_OVERRIDES = EXAMPLES / "rl" / "overrides.json"
-SFT_OVERRIDES = EXAMPLES / "sft" / "overrides.json"
-DARE_OVERRIDES = EXAMPLES / "sft" / "dare" / "overrides.json"
+EXAMPLES = REPO_ROOT / "recipes"
+RL_OVERRIDES = EXAMPLES / "rl_quickstart" / "overrides.json"
+SFT_OVERRIDES = EXAMPLES / "sft_quickstart" / "overrides.json"
+DARE_OVERRIDES = EXAMPLES / "sft_quickstart" / "dare" / "overrides.json"
 
-# Each runnable example and the folder that holds its entry point, task,
+# Each runnable recipe and the folder that holds its entry point, task,
 # metadata and data.
 EXAMPLE_FOLDERS = (
-    "sft/conversational",
-    "sft/dare",
-    "rl/math_grpo",
+    "sft_quickstart/conversational",
+    "sft_quickstart/dare",
+    "rl_quickstart/math_grpo",
     "inference",
     "model_deployment",
     "distillation",
     "dflash2",
-    "frameworks/skyrl/gsm8k_grpo",
+    "skyrl/gsm8k_grpo",
 )
 
 
@@ -42,16 +42,16 @@ def _import_example(module_name: str):
     ("runner_name", "task_name", "task_type", "task_module"),
     [
         (
-            "examples.sft.runner",
-            "examples.sft.conversational.train",
+            "recipes.sft_quickstart.runner",
+            "recipes.sft_quickstart.conversational.train",
             "ConversationalTask",
-            "examples.sft.conversational.task",
+            "recipes.sft_quickstart.conversational.task",
         ),
         (
-            "examples.rl.runner",
-            "examples.rl.math_grpo.train",
+            "recipes.rl_quickstart.runner",
+            "recipes.rl_quickstart.math_grpo.train",
             "MathTask",
-            "examples.rl.math_grpo.task",
+            "recipes.rl_quickstart.math_grpo.task",
         ),
     ],
 )
@@ -66,7 +66,7 @@ def test_task_entrypoints_call_shared_runner(runner_name, task_name, task_type, 
 
 @pytest.mark.parametrize(
     "module_name",
-    ["examples.sft.conversational.train", "examples.rl.math_grpo.train"],
+    ["recipes.sft_quickstart.conversational.train", "recipes.rl_quickstart.math_grpo.train"],
 )
 def test_entrypoints_do_not_re_export_helpers(module_name):
     module = _import_example(module_name)
@@ -75,9 +75,9 @@ def test_entrypoints_do_not_re_export_helpers(module_name):
 
 
 def test_helpers_shared_across_modules_are_public():
-    conversational = _import_example("examples.sft.conversational.task")
-    math_task = _import_example("examples.rl.math_grpo.task")
-    rl_runner = _import_example("examples.rl.runner")
+    conversational = _import_example("recipes.sft_quickstart.conversational.task")
+    math_task = _import_example("recipes.rl_quickstart.math_grpo.task")
+    rl_runner = _import_example("recipes.rl_quickstart.runner")
 
     assert callable(conversational.is_local_chat_file)
     assert callable(math_task.stopped_cleanly)
@@ -96,7 +96,7 @@ def _private_imports(path: Path) -> list[str]:
     ]
 
 
-@pytest.mark.parametrize("package", ["sft", "rl", "inference", "distillation", "dflash2"])
+@pytest.mark.parametrize("package", ["sft_quickstart", "rl_quickstart", "inference", "distillation", "dflash2"])
 def test_private_names_do_not_cross_module_boundaries(package):
     offenders = {
         str(path.relative_to(REPO_ROOT)): names
@@ -119,9 +119,9 @@ def _job_body(module_name: str, **settings):
 
 
 def test_examples_build_their_default_jobs_from_the_catalog():
-    utils = _import_example("examples.utils")
-    endpoint = _import_example("examples.inference.endpoint")
-    serve = _import_example("examples.inference.serve")
+    utils = _import_example("recipes.utils")
+    endpoint = _import_example("recipes.inference.endpoint")
+    serve = _import_example("recipes.inference.serve")
     defaults = serve.Config(config="unused")
     inference_body, source = endpoint.inference_endpoint_body(
         model=defaults.model,
@@ -130,9 +130,9 @@ def test_examples_build_their_default_jobs_from_the_catalog():
         lora=defaults.lora,
     )
 
-    assert _job_body("examples.sft.conversational.train") == utils.make_config("Qwen/Qwen3-8B", "standard")
+    assert _job_body("recipes.sft_quickstart.conversational.train") == utils.make_config("Qwen/Qwen3-8B", "standard")
     # The RL example applies its committed rl/overrides.json on top of the catalog.
-    assert _job_body("examples.rl.math_grpo.train") == utils.make_config(
+    assert _job_body("recipes.rl_quickstart.math_grpo.train") == utils.make_config(
         "Qwen/Qwen3-8B", "standard", lora=True, rl=True, overrides=[RL_OVERRIDES]
     )
     assert inference_body == utils.make_config("Qwen/Qwen3-8B", "standard", inference=True)
@@ -142,23 +142,23 @@ def test_examples_build_their_default_jobs_from_the_catalog():
 @pytest.mark.parametrize(
     "module_name",
     [
-        "examples.inference.serve",
-        "examples.inference.generate",
-        "examples.inference.evaluate",
-        "examples.sft.conversational.train",
-        "examples.rl.math_grpo.train",
+        "recipes.inference.serve",
+        "recipes.inference.generate",
+        "recipes.inference.evaluate",
+        "recipes.sft_quickstart.conversational.train",
+        "recipes.rl_quickstart.math_grpo.train",
     ],
 )
 def test_examples_pick_their_job_by_model_context_hardware_and_lora(module_name):
     config = _import_example(module_name).Config(config="unused")
 
     assert (config.model, config.context, config.hardware) == ("Qwen/Qwen3-8B", "standard", "h200")
-    assert config.lora is (module_name == "examples.rl.math_grpo.train")
+    assert config.lora is (module_name == "recipes.rl_quickstart.math_grpo.train")
     assert config.job_config is None
     assert config.max_seq_len is None
 
 
-@pytest.mark.parametrize("module_name", ["examples.sft.conversational.train", "examples.rl.math_grpo.train"])
+@pytest.mark.parametrize("module_name", ["recipes.sft_quickstart.conversational.train", "recipes.rl_quickstart.math_grpo.train"])
 def test_training_settings_default_to_the_catalog_values(module_name):
     config = _import_example(module_name).Config(config="unused")
 
@@ -166,7 +166,7 @@ def test_training_settings_default_to_the_catalog_values(module_name):
 
 
 def test_command_line_settings_override_the_catalog():
-    body = _job_body("examples.sft.conversational.train", lr=3e-5, train_batch_size=8, max_seq_len=4096)
+    body = _job_body("recipes.sft_quickstart.conversational.train", lr=3e-5, train_batch_size=8, max_seq_len=4096)
     training = _sub_job(body, "training")["training_config"]
 
     assert (training["optimizer"]["lr"], training["train_batch_size"], training["max_seq_len"]) == (3e-5, 8, 4096)
@@ -174,7 +174,7 @@ def test_command_line_settings_override_the_catalog():
 
 
 def test_rl_settings_reach_both_sub_jobs():
-    body = _job_body("examples.rl.math_grpo.train", max_seq_len=8192, lr=1e-6)
+    body = _job_body("recipes.rl_quickstart.math_grpo.train", max_seq_len=8192, lr=1e-6)
 
     assert _sub_job(body, "training")["training_config"]["max_seq_len"] == 8192
     assert _sub_job(body, "training")["training_config"]["optimizer"]["lr"] == 1e-6
@@ -182,9 +182,9 @@ def test_rl_settings_reach_both_sub_jobs():
 
 
 def test_moe_rl_example_fills_router_replay_with_the_fixed_default_caps():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = _job_body(
-        "examples.rl.math_grpo.train",
+        "recipes.rl_quickstart.math_grpo.train",
         model="Qwen/Qwen3.6-35B-A3B",
         context="long",
         problems_per_batch=4,
@@ -220,10 +220,10 @@ def _sampling_window_exceeds_training(utils, model: str, context: str, hardware:
 
 
 def test_rl_overrides_restore_betas_packing_and_reduce_scatter_for_every_model():
-    # rl/overrides.json restores the three RL settings shared by the pre-restructure
+    # rl_quickstart/overrides.json restores the three RL settings shared by the pre-restructure
     # configs, for the default RL job and every model's RL job.
-    utils = _import_example("examples.utils")
-    rl_dir = EXAMPLES / "rl"
+    utils = _import_example("recipes.utils")
+    rl_dir = EXAMPLES / "rl_quickstart"
     checked = 0
     for model, context, hardware, lora in _catalog_selections("training"):
         folder = REPO_ROOT / "model-catalog" / "models" / utils.model_slug(model) / context
@@ -242,7 +242,7 @@ def test_rl_overrides_restore_betas_packing_and_reduce_scatter_for_every_model()
 
 
 def test_job_config_skips_the_catalog_and_the_overrides_file(tmp_path, monkeypatch):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     custom = utils.make_config("Qwen/Qwen3-8B", "standard", lora=True)
     custom["sub_job_configs"][0]["training_config"]["n_gpus"] = 8
     path = tmp_path / "custom.json"
@@ -267,7 +267,7 @@ def test_job_config_skips_the_catalog_and_the_overrides_file(tmp_path, monkeypat
 
 @pytest.mark.parametrize("kind", ["training", "inference"])
 def test_an_rl_job_config_is_rejected_for_a_single_sub_job_mode(tmp_path, kind):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     rl_body = utils.make_config("Qwen/Qwen3-8B", "standard", rl=True)
     path = tmp_path / "rl.json"
     path.write_text(json.dumps(rl_body))
@@ -279,7 +279,7 @@ def test_an_rl_job_config_is_rejected_for_a_single_sub_job_mode(tmp_path, kind):
 
 
 def test_an_rl_job_config_with_mismatched_models_is_rejected(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = utils.make_config("Qwen/Qwen3-8B", "standard", rl=True)
     for sub in body["sub_job_configs"]:
         if sub["job_type"] == "sampling":
@@ -294,7 +294,7 @@ def test_an_rl_job_config_with_mismatched_models_is_rejected(tmp_path):
 
 
 def test_an_rl_job_config_with_an_oversized_sampling_window_is_rejected(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = utils.make_config("Qwen/Qwen3-8B", "standard", rl=True)
     for sub in body["sub_job_configs"]:
         config = sub.get("training_config") or sub.get("inference_config")
@@ -313,7 +313,7 @@ def test_an_rl_job_config_with_an_oversized_sampling_window_is_rejected(tmp_path
 
 
 def test_a_matching_job_config_is_still_accepted_for_each_mode(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     training = tmp_path / "t.json"
     training.write_text(json.dumps(utils.make_config("Qwen/Qwen3-8B", "standard")))
     inference = tmp_path / "i.json"
@@ -327,12 +327,12 @@ def test_a_matching_job_config_is_still_accepted_for_each_mode(tmp_path):
 
 
 def test_rl_job_config_is_used_as_is(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     record = utils.make_config("Qwen/Qwen3-8B", "standard", rl=True)
     path = tmp_path / "record.json"
     path.write_text(json.dumps(record))
 
-    assert _job_body("examples.rl.math_grpo.train", job_config=str(path)) == record
+    assert _job_body("recipes.rl_quickstart.math_grpo.train", job_config=str(path)) == record
 
 
 def _by_job_type(body: dict) -> dict:
@@ -345,11 +345,11 @@ def _by_job_type(body: dict) -> dict:
 )
 @pytest.mark.parametrize("kind", ["training", "inference"])
 def test_an_rl_job_config_names_either_catalog_file_of_a_pair(model, context, lora, kind):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     folder = REPO_ROOT / "model-catalog" / "models" / utils.model_slug(model) / context
     path = folder / utils.catalog_file_name("h200", kind, lora)
 
-    body = _job_body("examples.rl.math_grpo.train", job_config=str(path), model=model, context=context, lora=lora)
+    body = _job_body("recipes.rl_quickstart.math_grpo.train", job_config=str(path), model=model, context=context, lora=lora)
 
     # The file plus its sibling's other sub-job, sampling first: the catalog's RL
     # composition without rl/overrides.json or router replay.
@@ -362,7 +362,7 @@ def test_an_rl_job_config_names_either_catalog_file_of_a_pair(model, context, lo
 
 
 def test_an_rl_job_config_with_both_sub_jobs_is_not_paired(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     record = utils.make_config("Qwen/Qwen3-8B", "standard", lora=True, rl=True)
     path = tmp_path / "h200-training-lora.json"
     path.write_text(json.dumps(record))
@@ -373,7 +373,7 @@ def test_an_rl_job_config_with_both_sub_jobs_is_not_paired(tmp_path):
 
 
 def test_an_rl_job_config_without_a_sibling_keeps_the_composition_error(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     path = tmp_path / "h200-training-lora.json"
     path.write_text((REPO_ROOT / "model-catalog/models/qwen3-8b/standard/h200-training-lora.json").read_text())
 
@@ -382,7 +382,7 @@ def test_an_rl_job_config_without_a_sibling_keeps_the_composition_error(tmp_path
 
 
 def test_overrides_json_sits_between_the_catalog_and_the_command_line(tmp_path):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     (tmp_path / "overrides.json").write_text(
         json.dumps(
             {"sub_job_configs": [{"job_type": "training", "training_config": {"max_seq_len": 16384, "train_batch_size": 2}}]}
@@ -441,10 +441,10 @@ def test_every_example_ships_an_overrides_file_with_a_comment():
 
 
 def test_dare_applies_its_own_overrides_after_the_sft_file():
-    utils = _import_example("examples.utils")
-    dare = _import_example("examples.sft.dare.train")
+    utils = _import_example("recipes.utils")
+    dare = _import_example("recipes.sft_quickstart.dare.train")
 
-    body = _job_body("examples.sft.dare.train")
+    body = _job_body("recipes.sft_quickstart.dare.train")
 
     # The catalog file, sft/overrides.json, dare/overrides.json, then DARE's lr and batch defaults.
     assert body == utils.build_job(
@@ -458,11 +458,11 @@ def test_dare_applies_its_own_overrides_after_the_sft_file():
     )
     assert _sub_job(body, "training")["training_config"]["n_gpus"] == 8
     # Only DARE has the file: conversational SFT keeps the catalog's GPU count.
-    assert _sub_job(_job_body("examples.sft.conversational.train"), "training")["training_config"]["n_gpus"] == 4
+    assert _sub_job(_job_body("recipes.sft_quickstart.conversational.train"), "training")["training_config"]["n_gpus"] == 4
 
 
 def test_an_override_that_moves_the_gpu_count_past_the_deepspeed_batch_is_rejected():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     more_gpus = {"sub_job_configs": [{"job_type": "training", "training_config": {"n_gpus": 8}}]}
 
     # Qwen3-30B-A3B's file spells out a DeepSpeed batch of 4 for its 4 GPUs.
@@ -471,7 +471,7 @@ def test_an_override_that_moves_the_gpu_count_past_the_deepspeed_batch_is_reject
 
 
 def test_the_sft_and_inference_overrides_files_are_no_ops(monkeypatch):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     monkeypatch.delenv(utils.DEBUG_OPTIONS_ENV, raising=False)
 
     sft_with = utils.build_job("training", model="Qwen/Qwen3-8B", context="standard", example_dir=EXAMPLES / "sft")
@@ -485,8 +485,8 @@ def test_the_sft_and_inference_overrides_files_are_no_ops(monkeypatch):
 
 
 def test_build_job_adds_the_debug_tag_and_the_source_checkpoint(monkeypatch):
-    utils = _import_example("examples.utils")
-    endpoint = _import_example("examples.inference.endpoint")
+    utils = _import_example("recipes.utils")
+    endpoint = _import_example("recipes.inference.endpoint")
     monkeypatch.delenv(utils.DEBUG_OPTIONS_ENV, raising=False)
 
     body, source = endpoint.inference_endpoint_body(
@@ -505,22 +505,22 @@ def test_build_job_adds_the_debug_tag_and_the_source_checkpoint(monkeypatch):
 
 
 def test_a_source_checkpoint_needs_an_inference_job():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
 
     with pytest.raises(ValueError, match="a source checkpoint starts an inference job"):
         utils.build_job("training", model="Qwen/Qwen3-8B", context="standard", source_checkpoint={"checkpoint_id": "cp_1"})
 
 
 def test_inference_settings_reject_training_hyperparameters():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
 
     with pytest.raises(ValueError, match="lr and train_batch_size apply to a training sub-job"):
         utils.build_job("inference", model="Qwen/Qwen3-8B", context="standard", lr=1e-5)
 
 
 def test_rl_example_records_the_generated_body_with_its_debug_tag(tmp_path, monkeypatch):
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
     monkeypatch.setattr(runner, "CONFIGS_DIR", tmp_path / "configs")
     config = module.Config(config="unused", model="Qwen/Qwen3.6-35B-A3B", context="long")
     body = dict(runner.job_body(config), debug={"job": {"image_tag": "dev_test"}})
@@ -568,8 +568,8 @@ class _EmptyTask:
 
 def _run_rl_example(monkeypatch, tmp_path, events, *, fail=None, renderer_error=None, **settings):
     """Run the RL example's ``train`` with no steps against a fake client."""
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
     monkeypatch.setattr(runner, "CONFIGS_DIR", tmp_path / "configs")
     record = runner.write_job_record
 
@@ -599,8 +599,8 @@ def _run_rl_example(monkeypatch, tmp_path, events, *, fail=None, renderer_error=
 
 def test_rl_example_records_the_generated_body_before_it_submits(tmp_path, monkeypatch):
     events: list[str] = []
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
 
     path = _run_rl_example(monkeypatch, tmp_path, events)
 
@@ -610,9 +610,9 @@ def test_rl_example_records_the_generated_body_before_it_submits(tmp_path, monke
 
 
 def test_the_record_router_replay_caps_are_the_fixed_defaults(tmp_path, monkeypatch):
-    utils = _import_example("examples.utils")
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    utils = _import_example("recipes.utils")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
     monkeypatch.setattr(runner, "CONFIGS_DIR", tmp_path / "configs")
 
     def caps_for(problems_per_batch, group_size):
@@ -638,8 +638,8 @@ def test_a_run_that_fails_before_its_job_runs_leaves_its_own_generated_body(
     tmp_path, monkeypatch, fail, renderer_error, events
 ):
     seen: list[str] = []
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
 
     with pytest.raises((OSError, RuntimeError)):
         _run_rl_example(monkeypatch, tmp_path, seen, fail=fail, renderer_error=renderer_error)
@@ -654,7 +654,7 @@ def test_a_run_that_fails_before_its_job_runs_leaves_its_own_generated_body(
 
 def test_an_rl_run_attached_to_a_job_writes_no_record(tmp_path, monkeypatch, caplog):
     events: list[str] = []
-    caplog.set_level("INFO", logger="examples.rl.runner")
+    caplog.set_level("INFO", logger="recipes.rl_quickstart.runner")
 
     path = _run_rl_example(monkeypatch, tmp_path, events, job_id="job-9")
 
@@ -664,8 +664,8 @@ def test_an_rl_run_attached_to_a_job_writes_no_record(tmp_path, monkeypatch, cap
 
 
 def test_a_job_config_run_writes_no_record(tmp_path, monkeypatch):
-    utils = _import_example("examples.utils")
-    runner = _import_example("examples.rl.runner")
+    utils = _import_example("recipes.utils")
+    runner = _import_example("recipes.rl_quickstart.runner")
     monkeypatch.setattr(runner, "CONFIGS_DIR", tmp_path / "configs")
     job_config = tmp_path / "job.json"
     job_config.write_text(json.dumps(utils.make_config("Qwen/Qwen3-8B", "standard", lora=True, rl=True)))
@@ -710,8 +710,8 @@ class _OneProblemTask:
     ],
 )
 def test_rl_weight_sync_format_applies_to_full_parameter_runs(tmp_path, monkeypatch, lora, weight_sync_format, sent):
-    runner = _import_example("examples.rl.runner")
-    module = _import_example("examples.rl.math_grpo.train")
+    runner = _import_example("recipes.rl_quickstart.runner")
+    module = _import_example("recipes.rl_quickstart.math_grpo.train")
     syncs: list[dict] = []
     renderer = type("Renderer", (), {"get_stop_sequences": lambda self: ["<|im_end|>"]})()
     tokenizer = type("Tokenizer", (), {"pad_token_id": 0, "eos_token_id": 0})()
@@ -745,7 +745,7 @@ def test_rl_weight_sync_format_applies_to_full_parameter_runs(tmp_path, monkeypa
 def test_only_an_explicit_debug_image_tag_authorizes_debug_options(tmp_path, monkeypatch):
     import types
 
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     from cortex_training import CortexTrainingClient
     from cortex_training.client.core import DEBUG_OPTIONS_ENV
 
@@ -799,8 +799,8 @@ def test_only_an_explicit_debug_image_tag_authorizes_debug_options(tmp_path, mon
 def test_rl_records_are_not_committed():
     patterns = _ignore_patterns()
 
-    assert _ignored(PurePosixPath("examples/rl/configs"), is_dir=True, patterns=patterns)
-    assert not _ignored(PurePosixPath("examples/rl/math_grpo"), is_dir=True, patterns=patterns)
+    assert _ignored(PurePosixPath("recipes/rl_quickstart/configs"), is_dir=True, patterns=patterns)
+    assert not _ignored(PurePosixPath("recipes/rl_quickstart/math_grpo"), is_dir=True, patterns=patterns)
 
 
 def _catalog_selections(kind: str) -> list[tuple[str, str, str, bool]]:
@@ -815,7 +815,7 @@ def _catalog_selections(kind: str) -> list[tuple[str, str, str, bool]]:
 
 @pytest.mark.parametrize(("model", "context", "hardware", "lora"), _catalog_selections("training"))
 def test_dare_builds_a_runnable_mesh_or_stops_for_every_catalog_training_file(model, context, hardware, lora):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     catalog = utils.make_config(model, context, hardware=hardware, lora=lora)["sub_job_configs"][0]["training_config"]
     # DARE's ds_config nulls let the server derive the batch, so only the catalog
     # file's own sp_size/ep_size can fail to fit 8 GPUs.
@@ -824,13 +824,13 @@ def test_dare_builds_a_runnable_mesh_or_stops_for_every_catalog_training_file(mo
     if reasons:
         # Rejected before submission, naming the override and each reason.
         with pytest.raises(ValueError) as raised:
-            _job_body("examples.sft.dare.train", model=model, context=context, hardware=hardware, lora=lora)
+            _job_body("recipes.sft_quickstart.dare.train", model=model, context=context, hardware=hardware, lora=lora)
         message = str(raised.value)
         assert "training parallelism does not fit its GPU count after" in message
         assert str(DARE_OVERRIDES) in message
         assert all(reason in message for reason in reasons), message
         return
-    body = _job_body("examples.sft.dare.train", model=model, context=context, hardware=hardware, lora=lora)
+    body = _job_body("recipes.sft_quickstart.dare.train", model=model, context=context, hardware=hardware, lora=lora)
     training = _sub_job(body, "training")["training_config"]
     assert training["n_gpus"] == 8
     assert utils.parallelism_errors(training) == []
@@ -843,14 +843,14 @@ def test_dare_builds_a_runnable_mesh_or_stops_for_every_catalog_training_file(mo
 def test_dare_keeps_a_fitting_mesh_and_rejects_one_that_needs_more_gpus():
     # Qwen3-30B-A3B's 4-GPU EP4 mesh still divides 8 GPUs, and its catalog
     # DeepSpeed batch of 4 is dropped for the server to derive at 8.
-    training = _sub_job(_job_body("examples.sft.dare.train", model="Qwen/Qwen3-30B-A3B"), "training")["training_config"]
+    training = _sub_job(_job_body("recipes.sft_quickstart.dare.train", model="Qwen/Qwen3-30B-A3B"), "training")["training_config"]
     assert (training["n_gpus"], training["ep_size"]) == (8, 4)
     assert not {"train_batch_size", "train_micro_batch_size_per_gpu", "gradient_accumulation_steps"} & set(training["ds_config"])
     assert _server_deepspeed_batch(training) == (8, 1, 1, 8)
 
     # GLM-5.3-Flash-BF16 trains on a 16-GPU SP16/EP16 mesh, which 8 GPUs cannot hold.
     with pytest.raises(ValueError, match=r"sp_size 16 must be a positive divisor of n_gpus 8; ep_size 16"):
-        _job_body("examples.sft.dare.train", model="zai-org/GLM-5.3-Flash-BF16")
+        _job_body("recipes.sft_quickstart.dare.train", model="zai-org/GLM-5.3-Flash-BF16")
 
 
 def _assert_serves_checkpoint(utils, training_sub: dict, args: dict) -> None:
@@ -868,7 +868,7 @@ def _assert_serves_checkpoint(utils, training_sub: dict, args: dict) -> None:
 
 @pytest.mark.parametrize(("model", "context", "hardware", "lora"), _catalog_selections("training"))
 def test_follow_up_commands_pick_an_inference_file_that_serves_the_checkpoint(model, context, hardware, lora):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = utils.build_job("training", model=model, context=context, hardware=hardware, lora=lora)
 
     args = utils.inference_job_args(body, context=context)
@@ -891,7 +891,7 @@ def test_follow_up_commands_pick_an_inference_file_that_serves_the_checkpoint(mo
 def test_standard_runs_follow_up_at_standard_context(model, lora):
     # These models now ship standard-context inference files, so a standard
     # training run serves its checkpoint at standard context (matching adapter).
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = utils.build_job("training", model=model, context="standard", lora=lora)
 
     assert utils.inference_job_args(body, context="standard") == {
@@ -903,7 +903,7 @@ def test_standard_runs_follow_up_at_standard_context(model, lora):
 
 
 def test_rl_follow_up_commands_serve_the_checkpoint():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     for model, context, hardware, lora in _catalog_selections("training"):
         folder = REPO_ROOT / "model-catalog" / "models" / utils.model_slug(model) / context
         if not (folder / utils.catalog_file_name(hardware, "inference", lora)).is_file():
@@ -926,7 +926,7 @@ def test_rl_follow_up_commands_serve_the_checkpoint():
     ],
 )
 def test_job_config_runs_pick_the_context_from_their_sequence_length(model, context, expected):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     body = utils.make_config(model, context, lora=True)
 
     args = utils.inference_job_args(body)
@@ -953,7 +953,7 @@ def _server_deepspeed_batch(training_config: dict) -> tuple[int, int, int, int]:
 @pytest.mark.parametrize("train_batch_size", [1, 2, 64])
 @pytest.mark.parametrize(("model", "context", "hardware", "lora"), _catalog_selections("training"))
 def test_a_command_line_batch_leaves_the_deepspeed_batch_to_the_gpu_layout(model, context, hardware, lora, train_batch_size):
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     catalog = utils.make_config(model, context, hardware=hardware, lora=lora)["sub_job_configs"][0]["training_config"]
 
     body = utils.build_job(
@@ -985,8 +985,8 @@ def _training_override(**sub_job) -> dict:
     ],
 )
 def test_follow_up_commands_ask_for_an_inference_job_when_no_catalog_file_fits(caplog, override, needs):
-    utils = _import_example("examples.utils")
-    caplog.set_level("WARNING", logger="examples.utils")
+    utils = _import_example("recipes.utils")
+    caplog.set_level("WARNING", logger="recipes.utils")
     body = utils.make_config("Qwen/Qwen3-8B", "standard", lora=True, overrides=[override])
 
     args = utils.inference_job_args(body, context="standard")
@@ -997,8 +997,8 @@ def test_follow_up_commands_ask_for_an_inference_job_when_no_catalog_file_fits(c
 
 
 def test_follow_up_commands_need_an_inference_file_on_the_run_hardware(caplog):
-    utils = _import_example("examples.utils")
-    caplog.set_level("WARNING", logger="examples.utils")
+    utils = _import_example("recipes.utils")
+    caplog.set_level("WARNING", logger="recipes.utils")
     body = dict(utils.make_config("Qwen/Qwen3-8B", "standard"), hardware="B200")
 
     assert utils.inference_job_args(body, context="standard") == {"job_config": "INFERENCE_JOB_CONFIG"}
@@ -1006,7 +1006,7 @@ def test_follow_up_commands_need_an_inference_file_on_the_run_hardware(caplog):
 
 
 def test_lora_adapters_match_whatever_the_order_of_their_target_modules():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     adapter = {"peft_type": "Lora", "r": 32, "lora_alpha": 32, "target_modules": ["q_proj", "v_proj"]}
 
     assert utils.same_adapter(adapter, dict(adapter, target_modules=["v_proj", "q_proj"], task_type="CAUSAL_LM"))
@@ -1015,7 +1015,7 @@ def test_lora_adapters_match_whatever_the_order_of_their_target_modules():
 
 
 def test_deepseek_v4_trainer_and_vllm_module_names_are_the_same_adapter():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
     trainer = {
         "peft_type": "Lora",
         "r": 32,
@@ -1036,9 +1036,9 @@ def test_deepseek_v4_trainer_and_vllm_module_names_are_the_same_adapter():
 @pytest.mark.parametrize(
     "relative_path",
     [
-        "examples/sft/conversational/train.py",
-        "examples/rl/math_grpo/train.py",
-        "examples/distillation/on_policy/train.py",
+        "recipes/sft_quickstart/conversational/train.py",
+        "recipes/rl_quickstart/math_grpo/train.py",
+        "recipes/distillation/on_policy/train.py",
     ],
 )
 def test_task_modules_are_entrypoints(relative_path):
@@ -1051,9 +1051,9 @@ def test_task_modules_are_entrypoints(relative_path):
 @pytest.mark.parametrize(
     ("relative_path", "example_package"),
     [
-        ("examples/sft/runner.py", "examples.sft.conversational"),
-        ("examples/rl/runner.py", "examples.rl.math_grpo"),
-        ("examples/distillation/train.py", ".tasks."),
+        ("recipes/sft_quickstart/runner.py", "recipes.sft_quickstart.conversational"),
+        ("recipes/rl_quickstart/runner.py", "recipes.rl_quickstart.math_grpo"),
+        ("recipes/distillation/train.py", ".tasks."),
     ],
 )
 def test_shared_runners_are_task_agnostic_libraries(relative_path, example_package):
@@ -1066,8 +1066,8 @@ def test_shared_runners_are_task_agnostic_libraries(relative_path, example_packa
 @pytest.mark.parametrize(
     ("module_name", "task_type"),
     [
-        ("examples.sft.conversational.train", "ConversationalTask"),
-        ("examples.rl.math_grpo.train", "MathTask"),
+        ("recipes.sft_quickstart.conversational.train", "ConversationalTask"),
+        ("recipes.rl_quickstart.math_grpo.train", "MathTask"),
     ],
 )
 def test_entrypoint_selects_task(monkeypatch, module_name, task_type):
@@ -1119,7 +1119,7 @@ def _stub_tinker(monkeypatch, table):
 
 
 def test_recommended_renderer_name_raises_clearly_when_no_variant_matches(monkeypatch):
-    utils = importlib.import_module("examples.utils")
+    utils = importlib.import_module("recipes.utils")
     _stub_tinker(monkeypatch, {
         "has-both": ["q3", "q3_disable_thinking"],
         "thinking-only": ["g_high_reasoning", "g_low_reasoning"],
@@ -1140,9 +1140,9 @@ def test_recommended_renderer_name_raises_clearly_when_no_variant_matches(monkey
 
 
 def test_saved_checkpoints_print_a_command_that_serves_the_checkpoint(caplog):
-    utils = _import_example("examples.utils")
-    endpoint = _import_example("examples.inference.endpoint")
-    caplog.set_level("INFO", logger="examples.utils")
+    utils = _import_example("recipes.utils")
+    endpoint = _import_example("recipes.inference.endpoint")
+    caplog.set_level("INFO", logger="recipes.utils")
     body = utils.build_job("training", model="Qwen/Qwen3.5-4B", context="standard", lora=True)
 
     utils.log_saved_checkpoints(
@@ -1155,10 +1155,10 @@ def test_saved_checkpoints_print_a_command_that_serves_the_checkpoint(caplog):
     )
 
     assert (
-        "  python -m examples.inference.evaluate config=conn.json source_job_id=job-1 "
+        "  python -m recipes.inference.evaluate config=conn.json source_job_id=job-1 "
         "model=Qwen/Qwen3.5-4B context=standard hardware=h200 lora=true checkpoint_id=cp_1 temperature=1.0"
     ) in caplog.text
-    args = _printed_args(caplog.text, "examples.inference.evaluate")
+    args = _printed_args(caplog.text, "recipes.inference.evaluate")
     served, source = endpoint.inference_endpoint_body(
         model=args["model"],
         context=args["context"],
@@ -1173,8 +1173,8 @@ def test_saved_checkpoints_print_a_command_that_serves_the_checkpoint(caplog):
 
 
 def test_saved_checkpoints_print_an_explicit_job_config_when_no_catalog_file_fits(caplog):
-    utils = _import_example("examples.utils")
-    caplog.set_level("INFO", logger="examples.utils")
+    utils = _import_example("recipes.utils")
+    caplog.set_level("INFO", logger="recipes.utils")
     body = utils.make_config("Qwen/Qwen3-8B", "standard", overrides=[_training_override(model_name="org/Custom-8B")])
 
     utils.log_saved_checkpoints(
@@ -1186,7 +1186,7 @@ def test_saved_checkpoints_print_an_explicit_job_config_when_no_catalog_file_fit
     )
 
     assert (
-        "  python -m examples.inference.generate config=conn.json source_job_id=job-1 "
+        "  python -m recipes.inference.generate config=conn.json source_job_id=job-1 "
         "job_config=INFERENCE_JOB_CONFIG checkpoint_id=cp_1"
     ) in caplog.text
 
@@ -1196,7 +1196,7 @@ def _follow_up_body(module_name: str, args: dict[str, str]) -> dict:
     import chz
 
     module = _import_example(module_name)
-    endpoint = _import_example("examples.inference.endpoint")
+    endpoint = _import_example("recipes.inference.endpoint")
     config = chz.entrypoint(module.Config, argv=[f"{name}={value}" for name, value in args.items()])
     body, _ = endpoint.inference_endpoint_body(
         model=config.model,
@@ -1223,38 +1223,38 @@ def _follow_up_body(module_name: str, args: dict[str, str]) -> dict:
     ],
 )
 def test_serve_prints_follow_up_commands_for_the_endpoint_it_built(caplog, monkeypatch, settings, printed):
-    serve = _import_example("examples.inference.serve")
+    serve = _import_example("recipes.inference.serve")
     monkeypatch.setattr(serve, "make_client", lambda config_path, connection=None, **kw: _FakeJobClient([]))
-    caplog.set_level("INFO", logger="examples.inference.endpoint")
+    caplog.set_level("INFO", logger="recipes.inference.endpoint")
 
     serve.main(serve.Config(config="conn.json", **settings))
-    served = _import_example("examples.inference.endpoint").inference_endpoint_body(**settings)[0]
+    served = _import_example("recipes.inference.endpoint").inference_endpoint_body(**settings)[0]
 
-    for module_name in ("examples.inference.generate", "examples.inference.evaluate"):
+    for module_name in ("recipes.inference.generate", "recipes.inference.evaluate"):
         args = _printed_args(caplog.text, module_name)
         assert args == {"config": "conn.json", "job_id": "job-1", **printed}
         assert _follow_up_body(module_name, args) == served
 
 
 def test_serve_follow_up_commands_repeat_its_job_config(caplog, monkeypatch, tmp_path):
-    utils = _import_example("examples.utils")
-    serve = _import_example("examples.inference.serve")
+    utils = _import_example("recipes.utils")
+    serve = _import_example("recipes.inference.serve")
     monkeypatch.setattr(serve, "make_client", lambda config_path, connection=None, **kw: _FakeJobClient([]))
-    caplog.set_level("INFO", logger="examples.inference.endpoint")
+    caplog.set_level("INFO", logger="recipes.inference.endpoint")
     job_config = tmp_path / "glm 5.3.json"
     job_config.write_text(json.dumps(utils.make_config("zai-org/GLM-5.3", "long", inference=True)))
 
     serve.main(serve.Config(config="conn.json", job_config=str(job_config)))
 
-    for module_name in ("examples.inference.generate", "examples.inference.evaluate"):
+    for module_name in ("recipes.inference.generate", "recipes.inference.evaluate"):
         args = _printed_args(caplog.text, module_name)
         assert args == {"config": "conn.json", "job_id": "job-1", "job_config": str(job_config)}
         assert _follow_up_body(module_name, args)["sub_job_configs"][0]["model_name"] == "zai-org/GLM-5.3"
 
 
 def test_a_job_config_replaces_the_catalog_file_and_overrides_json(tmp_path, monkeypatch):
-    utils = _import_example("examples.utils")
-    endpoint = _import_example("examples.inference.endpoint")
+    utils = _import_example("recipes.utils")
+    endpoint = _import_example("recipes.inference.endpoint")
     example_dir = tmp_path / "inference"
     example_dir.mkdir()
     (example_dir / "overrides.json").write_text(
@@ -1287,9 +1287,9 @@ def test_a_job_config_replaces_the_catalog_file_and_overrides_json(tmp_path, mon
 
 def test_dare_evaluate_builds_its_inference_job_from_the_catalog(tmp_path):
     pytest.importorskip("sklearn")  # dare_bench.evaluation
-    utils = _import_example("examples.utils")
-    endpoint = _import_example("examples.inference.endpoint")
-    evaluate = _import_example("examples.sft.dare.evaluate")
+    utils = _import_example("recipes.utils")
+    endpoint = _import_example("recipes.inference.endpoint")
+    evaluate = _import_example("recipes.sft_quickstart.dare.evaluate")
 
     # The DARE evaluator no longer ships a pre-restructure config file; its
     # defaults select the catalog inference file (Qwen/Qwen3-8B, standard, full).
@@ -1327,7 +1327,7 @@ def test_dare_evaluate_builds_its_inference_job_from_the_catalog(tmp_path):
 
     # The checkpoint-eval command the SFT runner prints for DARE carries the
     # catalog selectors so the evaluator rebuilds this job, not its defaults.
-    task = _import_example("examples.sft.dare.task").DareTask(variant="fv")
+    task = _import_example("recipes.sft_quickstart.dare.task").DareTask(variant="fv")
     command = task.eval_command(
         connection_args="config=conn.json",
         job_id="job-0",
@@ -1337,7 +1337,7 @@ def test_dare_evaluate_builds_its_inference_job_from_the_catalog(tmp_path):
             context="standard",
         ),
     )
-    assert command.startswith("python -m examples.sft.dare.evaluate ")
+    assert command.startswith("python -m recipes.sft_quickstart.dare.evaluate ")
     assert "model=Qwen/Qwen3.5-4B" in command
     assert "context=standard" in command
     assert "lora=true" in command
@@ -1345,7 +1345,7 @@ def test_dare_evaluate_builds_its_inference_job_from_the_catalog(tmp_path):
 
 @pytest.mark.parametrize(
     ("path", "section"),
-    [("examples/api/README.md", "## Create-job bodies"), ("examples/README.md", "## Create a job config from the command line")],
+    [("recipes/api_quickstart/README.md", "## Create-job bodies"), ("recipes/README.md", "## Create a job config from the command line")],
 )
 def test_job_body_docs_submit_with_ct(path, section):
     text = (REPO_ROOT / path).read_text()
@@ -1362,7 +1362,7 @@ def test_reference_docs_only_import_packaged_modules():
     """The REST/SDK contract docs must not send a (pip-installed) reader to a
     module the wheel does not ship: every ``cortex_training`` import they show
     must resolve in the installed package, and they must never instruct
-    importing ``examples/`` or the removed ``router_replay_planner``."""
+    importing ``recipes/`` or the removed ``router_replay_planner``."""
     import importlib
 
     import_stmt = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(.+)|import\s+([\w.]+))\s*$")
@@ -1374,8 +1374,8 @@ def test_reference_docs_only_import_packaged_modules():
             if not match:
                 continue
             module = match.group(1) or match.group(3)
-            if module == "examples" or module.startswith("examples."):
-                raise AssertionError(f"{name} instructs importing examples/: {line.strip()!r}")
+            if module == "recipes" or module.startswith("examples."):
+                raise AssertionError(f"{name} instructs importing recipes/: {line.strip()!r}")
             if module == "cortex_training.router_replay_planner":
                 raise AssertionError(f"{name} imports the planner removed from the SDK: {line.strip()!r}")
             if module != "cortex_training" and not module.startswith("cortex_training."):
@@ -1392,13 +1392,13 @@ def test_reference_docs_only_import_packaged_modules():
 
 
 def test_job_configs_come_from_the_catalog():
-    utils = _import_example("examples.utils")
+    utils = _import_example("recipes.utils")
 
-    assert not (EXAMPLES / "sft" / "configs").exists()
+    assert not (EXAMPLES / "sft_quickstart" / "configs").exists()
     assert not (EXAMPLES / "inference" / "configs").exists()
     assert not hasattr(utils, "sampling_job_body")
     # Distillation builds its student and teacher jobs from the catalog too, via
-    # make_distillation_config and examples/distillation/overrides.json; configs/
+    # make_distillation_config and recipes/distillation/overrides.json; configs/
     # is a gitignored per-run output and holds no committed job files.
     assert hasattr(utils, "make_distillation_config")
     assert (EXAMPLES / "distillation" / "overrides.json").is_file()
@@ -1407,40 +1407,22 @@ def test_job_configs_come_from_the_catalog():
 
 
 def test_examples_keep_task_code_and_metadata_in_their_own_folders():
-    assert not (EXAMPLES / "sft" / "example.yaml").exists()
-    assert not (EXAMPLES / "rl" / "example.yaml").exists()
-    assert not (EXAMPLES / "sft" / "tasks").exists()
-    assert not (EXAMPLES / "rl" / "tasks").exists()
+    assert not (EXAMPLES / "sft_quickstart" / "example.yaml").exists()
+    assert not (EXAMPLES / "rl_quickstart" / "example.yaml").exists()
+    assert not (EXAMPLES / "sft_quickstart" / "tasks").exists()
+    assert not (EXAMPLES / "rl_quickstart" / "tasks").exists()
     assert not (EXAMPLES / "inference" / "identity.py").exists()
-    assert (EXAMPLES / "sft" / "conversational" / "task.py").is_file()
-    assert (EXAMPLES / "sft" / "conversational" / "identity.py").is_file()
-    assert (EXAMPLES / "rl" / "math_grpo" / "task.py").is_file()
+    assert (EXAMPLES / "sft_quickstart" / "conversational" / "task.py").is_file()
+    assert (EXAMPLES / "sft_quickstart" / "conversational" / "identity.py").is_file()
+    assert (EXAMPLES / "rl_quickstart" / "math_grpo" / "task.py").is_file()
 
 
-@pytest.mark.parametrize("folder", ["sft/conversational", "rl/math_grpo", "inference"])
+@pytest.mark.parametrize("folder", ["sft_quickstart/conversational", "rl_quickstart/math_grpo", "inference"])
 def test_catalog_owned_fields_leave_example_metadata(folder):
     keys = _metadata_keys(EXAMPLES / folder / "example.yaml")
 
     assert "models" not in keys
     assert "default_training_gpus" not in keys
-
-
-# The runnable workflows are called examples everywhere. Other projects keep
-# their own names, so these lines may still say "recipe": tinker-cookbook's
-# recipes and its tinker_cookbook.recipes package, the provenance.recipe path
-# of an example adapted from another project, and paths in the Arctic Platform
-# repository.
-_STRAY_TERM = re.compile("recipe", re.IGNORECASE)
-_UPSTREAM_REFERENCES = (
-    ("*", re.compile(r"tinker_cookbook\.recipes\.")),
-    ("examples/frameworks/*", re.compile(r"cookbook", re.IGNORECASE)),
-    ("examples/*example.yaml", re.compile(r"^  recipe: ")),
-    ("examples/frameworks/skyrl/*", re.compile(r"Arctic-Platform/(?:blob/main/)?recipes/")),
-    # The OpenHands / bring-your-own-agent integration docs describe the Arctic
-    # Platform OpenHands recipe (another project), so they may name "recipe".
-    ("examples/frameworks/openhands.md", re.compile(r"recipe", re.IGNORECASE)),
-    ("examples/frameworks/bring-your-own-agent.md", re.compile(r"recipe", re.IGNORECASE)),
-)
 
 
 def _ignore_patterns() -> list[str]:
@@ -1478,29 +1460,9 @@ def _repository_files():
                 yield path
 
 
-def _is_upstream_reference(path: PurePosixPath, line: str) -> bool:
-    return any(
-        fnmatch.fnmatch(path.as_posix(), pattern) and reference.search(line)
-        for pattern, reference in _UPSTREAM_REFERENCES
-    )
-
-
-def test_recipe_only_names_other_projects():
-    this_file = PurePosixPath(Path(__file__).resolve().relative_to(REPO_ROOT).as_posix())
-    stray = []
-    for path in _repository_files():
-        if _STRAY_TERM.search(path.as_posix()):
-            stray.append(f"{path}: file name")
-        if path == this_file:
-            continue
-        data = (REPO_ROOT / path).read_bytes()
-        if b"\0" in data:
-            continue
-        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
-            if _STRAY_TERM.search(line) and not _is_upstream_reference(path, line):
-                stray.append(f"{path}:{number}: {line.strip()}")
-
-    assert stray == []
+def test_examples_folder_is_renamed_to_recipes():
+    assert not (REPO_ROOT / "examples").exists()
+    assert (REPO_ROOT / "recipes").is_dir()
 
 
 # A catalog job file is picked by model, context, hardware and mode, so nothing
@@ -1526,6 +1488,6 @@ def test_nothing_outside_the_catalog_names_a_catalog_job_file():
 def test_repository_search_skips_ignored_and_hidden_files():
     files = {path.as_posix() for path in _repository_files()}
 
-    assert "examples/utils.py" in files
+    assert "recipes/utils.py" in files
     assert ".gitignore" not in files
     assert not any(name.startswith((".git/", ".venv/")) or "__pycache__" in name for name in files)

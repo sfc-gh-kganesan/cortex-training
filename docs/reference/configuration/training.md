@@ -9,7 +9,7 @@ The examples take two separate things:
 - The job — a create-job body holding the whole training configuration. The
   example builds it from the [model catalog](../../../model-catalog/README.md),
   or takes your own file with `job_config=`; see
-  [How an example builds its job](../../../examples/README.md#how-an-example-builds-its-job).
+  [How an example builds its job](../../../recipes/README.md#how-an-example-builds-its-job).
 
 The job holds the server-side configuration of the workers:
 
@@ -21,7 +21,7 @@ The job holds the server-side configuration of the workers:
 
 The `name=value` command-line arguments of the single-model examples fall into
 four groups (distillation has student and teacher variants of the first two; see
-its [options](../../../examples/distillation/README.md#options)):
+its [options](../../../recipes/distillation/README.md#options)):
 
 - Job selection: `model=`, `context=`, `hardware=` and `lora=` pick the catalog
   file, and `job_config=` replaces it with your own.
@@ -40,5 +40,5 @@ ZeRO stage 3 also fails before submission; use stage 1 or 2. Everything else,
 `optimizer` included, is posted unchanged, so
 [REST API section 8](../rest-api.md#8-create-job-schemas) is the authoritative
 schema for its fields. To see a complete job with every field, write one with
-`python -m examples.utils` (see
-[Create a job config from the command line](../../../examples/README.md#create-a-job-config-from-the-command-line)).
+`python -m recipes.utils` (see
+[Create a job config from the command line](../../../recipes/README.md#create-a-job-config-from-the-command-line)).

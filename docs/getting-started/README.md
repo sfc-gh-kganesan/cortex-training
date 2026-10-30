@@ -14,6 +14,6 @@ Shorter pages for readers who already have an account:
 [a quick SFT run](first-sft-run.md).
 
 After completing account setup, use the
-[example index](../../examples/README.md) to explore other training workflows
+[example index](../../recipes/README.md) to explore other training workflows
 or consult the [troubleshooting reference](../reference/troubleshooting.md) if
 a command fails.
