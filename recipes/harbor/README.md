@@ -70,8 +70,9 @@ The run script installs OpenHands and Harbor itself.
 
 ## Configure
 
-The Arctic Platform launcher reads its connection from `ARCTIC_CORTEX_*`
-environment variables (or `~/cortex-training-config.json` saved by `cortex-training login`):
+The Arctic Platform launcher reads its connection only from `ARCTIC_CORTEX_*`
+environment variables, so `cortex-training login` alone is not enough. Export
+them from the config JSON you log in with:
 
 ```bash
 cfg=~/cortex-training-config.json
@@ -83,12 +84,13 @@ export ARCTIC_CORTEX_PAT=$(jq -r .pat "$cfg")
 
 ## 1. Evaluate on the sandbox training uses
 
-Rollouts run in a [Snowflake sandbox](https://github.com/harbor-framework/harbor/tree/main/src/harbor/environments/snowflake)
+Rollouts run in a [Snowflake sandbox](https://github.com/Snowflake-AI-Research/Arctic-Platform/tree/main/arctic_platform/integrations/harbor/snowflake_sandbox)
 by default. To get a baseline that training is measured against, evaluate on
-that same environment:
+that same environment. From the `Arctic-Platform` checkout, `uv run --extra harbor`
+provides the pinned `harbor` CLI with that environment importable:
 
 ```bash
-harbor run -p /path/to/eval_tasks -a <your agent> -m <your model> \
+uv run --extra harbor harbor run -p /path/to/eval_tasks -a <your agent> -m <your model> \
   --env arctic_platform.integrations.harbor.snowflake_sandbox:SnowflakeSandboxEnvironment \
   --ek image_repo=DB.SCHEMA.REPO --ek connection=MY_CONN --ek role=MY_ROLE
 ```
