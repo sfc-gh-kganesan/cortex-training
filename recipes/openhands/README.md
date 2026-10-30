@@ -58,8 +58,9 @@ The run script installs OpenHands itself.
 
 ## Configure
 
-The Arctic Platform launcher reads its connection from `ARCTIC_CORTEX_*`
-environment variables (or `~/cortex-training-config.json` saved by `cortex-training login`):
+The Arctic Platform launcher reads its connection only from `ARCTIC_CORTEX_*`
+environment variables, so `cortex-training login` alone is not enough. Export
+them from the config JSON you log in with:
 
 ```bash
 cfg=~/cortex-training-config.json
