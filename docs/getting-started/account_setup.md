@@ -43,15 +43,6 @@ Share these three values with the Snowflake team. They will:
 You cannot proceed until this is complete. Once the team confirms enablement,
 continue to the next step.
 
-If you plan to [start a job from your own weights](../guides/training/external-weights.md),
-the role that uploads them needs the `CREATE STAGE` privilege on the target schema.
-Only the owner of the database (typically `SYSADMIN`) can grant it, so ask your
-account admin to run:
-
-```sql
-GRANT CREATE STAGE ON SCHEMA MY_DB.MY_SCHEMA TO ROLE MY_ROLE;
-```
-
 ## Step 3: Authenticate
 
 Generate a Programmatic Access Token (PAT) and configure your client connection.
